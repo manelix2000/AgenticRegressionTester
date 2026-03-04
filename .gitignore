@@ -1,0 +1,5 @@
+# Specify filepatterns you want git to ignore.
+
+ios-driver/Tuist/.build
+ios-driver/IOSAgentDriver.xcodeproj/xcuserdata
+ios-driver/IOSAgentDriver.xcworkspace/xcuserdata

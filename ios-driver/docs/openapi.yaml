@@ -1,0 +1,1174 @@
+openapi: 3.0.3
+info:
+  title: IOSAgentDriver API
+  description: |
+    HTTP API for automating iOS apps on Simulator using XCTest and Accessibility tree.
+    
+    IOSAgentDriver exposes a JSON API that allows you to interact with iOS apps running on the iOS Simulator
+    using the XCTest framework and iOS Accessibility APIs. Perfect for automated testing, CI/CD integration,
+    and remote test execution.
+    
+    ## Features
+    - Launch and terminate apps
+    - Query and interact with UI elements
+    - Take screenshots
+    - Handle alerts and system dialogs
+    - Validate element states
+    - Configure runtime behavior
+    - Explicit wait conditions
+    
+    ## Base URL
+    Default: `http://localhost:8080`
+    
+    Configure port via `RUNNER_PORT` environment variable.
+    
+  version: 1.0.0
+  contact:
+    name: IOSAgentDriver
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local runner (default port)
+  - url: http://localhost:{port}
+    description: Configurable port
+    variables:
+      port:
+        default: '8080'
+        description: Runner HTTP port
+
+tags:
+  - name: Health
+    description: Server health and status
+  - name: Configuration
+    description: Runtime configuration management
+  - name: App Management
+    description: Launch and terminate apps
+  - name: UI Query
+    description: Query UI tree and find elements
+  - name: UI Interaction
+    description: Tap, type, swipe, and scroll
+  - name: Screenshots
+    description: Capture screenshots
+  - name: Validation
+    description: Validate and assert element states
+  - name: Alerts
+    description: Detect and dismiss alerts
+  - name: Wait
+    description: Explicit wait conditions
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Check if the server is running and responsive
+      tags: [Health]
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2026-03-01T12:00:00Z"
+
+  /config:
+    get:
+      summary: Get configuration
+      description: Retrieve current runtime configuration
+      tags: [Configuration]
+      responses:
+        '200':
+          description: Current configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerConfig'
+    
+    post:
+      summary: Update configuration
+      description: Update runtime configuration (partial updates supported)
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerConfig'
+            examples:
+              update_timeout:
+                summary: Update only timeout
+                value:
+                  defaultTimeout: 10.0
+              update_all:
+                summary: Update all settings
+                value:
+                  defaultTimeout: 8.0
+                  errorVerbosity: verbose
+                  maxConcurrentRequests: 5
+      responses:
+        '200':
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerConfig'
+        '400':
+          description: Invalid configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /config/reset:
+    post:
+      summary: Reset configuration
+      description: Reset configuration to default values
+      tags: [Configuration]
+      responses:
+        '200':
+          description: Configuration reset to defaults
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerConfig'
+
+  /app/launch:
+    post:
+      summary: Launch app
+      description: Launch an app by bundle ID with optional arguments and environment variables
+      tags: [App Management]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - bundleId
+              properties:
+                bundleId:
+                  type: string
+                  description: App bundle identifier
+                  example: com.example.MyApp
+                arguments:
+                  type: array
+                  items:
+                    type: string
+                  description: Launch arguments
+                  example: ["-UIAnimationDragCoefficient", "100"]
+                environment:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Environment variables
+                  example: {"MOCK_MODE": "true"}
+      responses:
+        '200':
+          description: App launched successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bundleId:
+                    type: string
+                  state:
+                    type: string
+                    enum: [running, notRunning]
+        '400':
+          description: Invalid request or app not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /app/terminate:
+    post:
+      summary: Terminate app
+      description: Terminate a running app by bundle ID
+      tags: [App Management]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - bundleId
+              properties:
+                bundleId:
+                  type: string
+                  example: com.example.MyApp
+      responses:
+        '200':
+          description: App terminated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bundleId:
+                    type: string
+                  state:
+                    type: string
+                    enum: [notRunning]
+
+  /app/list:
+    get:
+      summary: List installed apps
+      description: Get list of installed apps on the simulator
+      tags: [App Management]
+      responses:
+        '200':
+          description: List of installed apps
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apps:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        bundleId:
+                          type: string
+                        name:
+                          type: string
+                        state:
+                          type: string
+                          enum: [running, notRunning]
+
+  /ui/tree:
+    get:
+      summary: Get UI tree
+      description: Retrieve the complete UI hierarchy as a tree structure
+      tags: [UI Query]
+      responses:
+        '200':
+          description: UI tree
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UINode'
+        '500':
+          description: Failed to retrieve UI tree
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ui/find:
+    post:
+      summary: Find element
+      description: Find an element by identifier, label, or predicate
+      tags: [UI Query]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                identifier:
+                  type: string
+                  description: Accessibility identifier
+                  example: loginButton
+                label:
+                  type: string
+                  description: Accessibility label
+                  example: Login
+                predicate:
+                  type: string
+                  description: NSPredicate string for complex queries
+                  example: "type == 'XCUIElementTypeButton' AND label CONTAINS 'Submit'"
+                timeout:
+                  type: number
+                  format: double
+                  description: Optional timeout override (uses config default if not specified)
+                  example: 10.0
+              oneOf:
+                - required: [identifier]
+                - required: [label]
+                - required: [predicate]
+      responses:
+        '200':
+          description: Element found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UINode'
+        '404':
+          description: Element not found within timeout
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ui/element/{elementId}:
+    get:
+      summary: Get element details
+      description: Get details of a specific element by its identifier
+      tags: [UI Query]
+      parameters:
+        - name: elementId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Element accessibility identifier
+      responses:
+        '200':
+          description: Element details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UINode'
+        '404':
+          description: Element not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ui/tap:
+    post:
+      summary: Tap element
+      description: Tap an element by identifier, label, or predicate
+      tags: [UI Interaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                identifier:
+                  type: string
+                  example: submitButton
+                label:
+                  type: string
+                  example: Submit
+                predicate:
+                  type: string
+                  example: "type == 'XCUIElementTypeButton' AND label == 'Submit'"
+                timeout:
+                  type: number
+                  format: double
+                  example: 5.0
+              oneOf:
+                - required: [identifier]
+                - required: [label]
+                - required: [predicate]
+      responses:
+        '200':
+          description: Element tapped successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Element tapped successfully
+        '404':
+          description: Element not found or not tappable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ui/type:
+    post:
+      summary: Type text
+      description: Type text into an element (e.g., text field)
+      tags: [UI Interaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                identifier:
+                  type: string
+                  example: emailField
+                label:
+                  type: string
+                  example: Email
+                predicate:
+                  type: string
+                text:
+                  type: string
+                  description: Text to type
+                  example: user@example.com
+                clearFirst:
+                  type: boolean
+                  description: Clear existing text before typing
+                  default: false
+                useHardwareKeyboard:
+                  type: boolean
+                  description: Use hardware keyboard (faster but limited to ASCII)
+                  default: true
+                timeout:
+                  type: number
+                  format: double
+                  example: 5.0
+              oneOf:
+                - required: [identifier, text]
+                - required: [label, text]
+                - required: [predicate, text]
+      responses:
+        '200':
+          description: Text typed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Text typed successfully
+        '404':
+          description: Element not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ui/swipe:
+    post:
+      summary: Swipe element
+      description: Perform a swipe gesture on an element
+      tags: [UI Interaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - direction
+              properties:
+                identifier:
+                  type: string
+                  example: scrollView
+                label:
+                  type: string
+                predicate:
+                  type: string
+                direction:
+                  type: string
+                  enum: [up, down, left, right]
+                  example: up
+                velocity:
+                  type: string
+                  enum: [slow, default, fast]
+                  default: default
+                timeout:
+                  type: number
+                  format: double
+              oneOf:
+                - required: [identifier, direction]
+                - required: [label, direction]
+                - required: [predicate, direction]
+      responses:
+        '200':
+          description: Swipe performed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '404':
+          description: Element not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ui/scroll:
+    post:
+      summary: Scroll container
+      description: Scroll a container element until another element is visible
+      tags: [UI Interaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - containerIdentifier
+                - direction
+              properties:
+                containerIdentifier:
+                  type: string
+                  description: Container element identifier
+                  example: mainScrollView
+                direction:
+                  type: string
+                  enum: [up, down, left, right]
+                toVisible:
+                  type: object
+                  description: Target element to scroll to
+                  properties:
+                    identifier:
+                      type: string
+                    label:
+                      type: string
+                    predicate:
+                      type: string
+                timeout:
+                  type: number
+                  format: double
+                  description: Scroll uses 2x default timeout
+      responses:
+        '200':
+          description: Scrolled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '404':
+          description: Container or target element not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ui/keyboard/type:
+    post:
+      summary: Hardware keyboard input
+      description: Send hardware keyboard keys (tab, enter, escape, arrow keys)
+      tags: [UI Interaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - keys
+              properties:
+                keys:
+                  type: array
+                  items:
+                    type: string
+                  description: Keys to type (can include special keys)
+                  example: ["username", "tab", "password", "enter"]
+      responses:
+        '200':
+          description: Keys typed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /screenshot:
+    post:
+      summary: Take full screenshot
+      description: Capture screenshot of entire screen
+      tags: [Screenshots]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format:
+                  type: string
+                  enum: [png, jpeg]
+                  default: png
+                quality:
+                  type: number
+                  format: double
+                  minimum: 0.0
+                  maximum: 1.0
+                  description: JPEG quality (0.0-1.0, only for jpeg format)
+                  default: 0.8
+      responses:
+        '200':
+          description: Screenshot captured
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: string
+                    format: byte
+                    description: Base64-encoded image data
+                  format:
+                    type: string
+                    example: png
+
+  /screenshot/element:
+    post:
+      summary: Take element screenshot
+      description: Capture screenshot of a specific element
+      tags: [Screenshots]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - identifier
+              properties:
+                identifier:
+                  type: string
+                  example: loginForm
+                format:
+                  type: string
+                  enum: [png, jpeg]
+                  default: png
+                quality:
+                  type: number
+                  format: double
+                  minimum: 0.0
+                  maximum: 1.0
+                  default: 0.8
+                timeout:
+                  type: number
+                  format: double
+      responses:
+        '200':
+          description: Element screenshot captured
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: string
+                    format: byte
+                  format:
+                    type: string
+        '404':
+          description: Element not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ui/validate:
+    post:
+      summary: Soft validation
+      description: Validate multiple element properties without failing (returns validation results)
+      tags: [Validation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - properties
+              properties:
+                identifier:
+                  type: string
+                  example: loginButton
+                label:
+                  type: string
+                predicate:
+                  type: string
+                properties:
+                  type: object
+                  description: Properties to validate
+                  properties:
+                    exists:
+                      type: boolean
+                    isEnabled:
+                      type: boolean
+                    isVisible:
+                      type: boolean
+                    label:
+                      type: string
+                      description: Exact match or "contains:prefix" for substring
+                    value:
+                      type: string
+                    count:
+                      type: string
+                      description: "Operators: >, >=, <, <=, =="
+                      example: ">= 1"
+                  example:
+                    exists: true
+                    isEnabled: true
+                    label: "contains:Login"
+                timeout:
+                  type: number
+                  format: double
+              oneOf:
+                - required: [identifier, properties]
+                - required: [label, properties]
+                - required: [predicate, properties]
+      responses:
+        '200':
+          description: Validation results (passes and failures)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  passed:
+                    type: array
+                    items:
+                      type: string
+                    example: ["exists", "isEnabled"]
+                  failed:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        property:
+                          type: string
+                        expected:
+                          type: string
+                        actual:
+                          type: string
+
+  /ui/assert:
+    post:
+      summary: Hard assertion
+      description: Assert a single property (fails immediately if assertion fails)
+      tags: [Validation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - property
+                - expected
+              properties:
+                identifier:
+                  type: string
+                label:
+                  type: string
+                predicate:
+                  type: string
+                property:
+                  type: string
+                  enum: [exists, isEnabled, isVisible, label, value, count]
+                  example: exists
+                expected:
+                  oneOf:
+                    - type: boolean
+                    - type: string
+                  example: true
+                timeout:
+                  type: number
+                  format: double
+              oneOf:
+                - required: [identifier, property, expected]
+                - required: [label, property, expected]
+                - required: [predicate, property, expected]
+      responses:
+        '200':
+          description: Assertion passed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Assertion passed
+                  property:
+                    type: string
+                  expected:
+                    oneOf:
+                      - type: boolean
+                      - type: string
+                  actual:
+                    oneOf:
+                      - type: boolean
+                      - type: string
+        '400':
+          description: Assertion failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ui/alerts:
+    get:
+      summary: List alerts
+      description: Detect all visible alerts (system, app, and sheets)
+      tags: [Alerts]
+      responses:
+        '200':
+          description: List of detected alerts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          enum: [system, alert, sheet]
+                        title:
+                          type: string
+                        message:
+                          type: string
+                        buttons:
+                          type: array
+                          items:
+                            type: string
+                        identifier:
+                          type: string
+                        frame:
+                          type: object
+                          properties:
+                            x:
+                              type: number
+                            y:
+                              type: number
+                            width:
+                              type: number
+                            height:
+                              type: number
+
+  /ui/alert/dismiss:
+    post:
+      summary: Dismiss alert
+      description: Dismiss an alert by tapping a specific button
+      tags: [Alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - buttonLabel
+              properties:
+                buttonLabel:
+                  type: string
+                  description: Label of button to tap (case-sensitive)
+                  example: OK
+                timeout:
+                  type: number
+                  format: double
+      responses:
+        '200':
+          description: Alert dismissed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Alert dismissed successfully
+        '404':
+          description: Alert or button not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ui/wait:
+    post:
+      summary: Explicit wait
+      description: |
+        Wait for a specific condition to be met using XCTest native waiting mechanisms.
+        
+        **XCTest Native Waiting**: Uses `XCUIElement.waitForExistence()` for simple checks 
+        and `XCTNSPredicateExpectation` for complex conditions. Returns immediately when 
+        condition is met (no polling delay).
+        
+        **Soft Validation**: Set `softValidation: true` to prevent exceptions on failure.
+        Useful for optional elements, feature detection, and conditional flows.
+      tags: [Wait]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - condition
+              properties:
+                condition:
+                  type: string
+                  enum: 
+                    - exists
+                    - notExists
+                    - isEnabled
+                    - isDisabled
+                    - isHittable
+                    - isNotHittable
+                    - hasFocus
+                    - isSelected
+                    - isNotSelected
+                    - labelContains
+                    - labelEquals
+                    - valueContains
+                    - valueEquals
+                  description: |
+                    Wait condition type. 
+                    
+                    **Updated conditions**:
+                    - `isHittable` - Element is visible and hittable (replaces `isVisible`)
+                    - `hasFocus` - Element has keyboard focus
+                    - `isSelected` - Element is in selected state
+                    - `labelContains` - Element label contains text (renamed from `textContains`)
+                    - `labelEquals` - Element label matches exactly (renamed from `textEquals`)
+                  example: exists
+                selector:
+                  type: object
+                  description: Element selector (use one of: accessibilityId, label, or predicate)
+                  properties:
+                    type:
+                      type: string
+                      enum: [accessibilityId, label, predicate]
+                      description: Selector type
+                    value:
+                      type: string
+                      description: Selector value
+                  required: [type, value]
+                identifier:
+                  type: string
+                  description: (Deprecated - use selector) Element accessibility identifier
+                label:
+                  type: string
+                  description: (Deprecated - use selector) Element accessibility label
+                predicate:
+                  type: string
+                  description: (Deprecated - use selector) NSPredicate query string
+                value:
+                  type: string
+                  description: Expected value for labelContains/labelEquals/valueContains/valueEquals conditions
+                timeout:
+                  type: number
+                  format: double
+                  description: Maximum wait time (seconds)
+                  default: 5.0
+                  example: 10.0
+                softValidation:
+                  type: boolean
+                  description: |
+                    If true, returns result without throwing exception on failure.
+                    Use for optional elements, feature detection, conditional flows.
+                  default: false
+                  example: false
+              oneOf:
+                - required: [condition, selector]
+                - required: [condition, identifier]
+                - required: [condition, label]
+                - required: [condition, predicate]
+            examples:
+              wait_exists:
+                summary: Wait for element to exist
+                value:
+                  selector:
+                    type: accessibilityId
+                    value: loginButton
+                  condition: exists
+                  timeout: 10.0
+              wait_text:
+                summary: Wait for label to contain text
+                value:
+                  selector:
+                    type: accessibilityId
+                    value: statusLabel
+                  condition: labelContains
+                  value: "Success"
+                  timeout: 15.0
+              wait_soft_validation:
+                summary: Optional element check (no exception)
+                value:
+                  selector:
+                    type: accessibilityId
+                    value: optionalBanner
+                  condition: exists
+                  timeout: 3.0
+                  softValidation: true
+      responses:
+        '200':
+          description: Wait completed (check conditionMet for success/failure)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conditionMet:
+                    type: boolean
+                    description: Whether condition was met (true) or timed out (false with softValidation)
+                    example: true
+                  condition:
+                    type: string
+                    description: Condition that was checked
+                    example: exists
+                  element:
+                    $ref: '#/components/schemas/UINode'
+                    description: Element that met condition (null if failed)
+                  waitedTime:
+                    type: number
+                    format: double
+                    description: Actual time waited (seconds)
+                    example: 2.34
+                  timestamp:
+                    type: string
+                    format: date-time
+                    description: ISO8601 timestamp
+                    example: "2026-03-03T08:55:14Z"
+              examples:
+                success:
+                  summary: Condition met
+                  value:
+                    conditionMet: true
+                    condition: exists
+                    element:
+                      type: XCUIElementTypeButton
+                      identifier: loginButton
+                      label: Login
+                      isEnabled: true
+                      isVisible: true
+                      frame: { x: 100, y: 200, width: 150, height: 44 }
+                      children: []
+                    waitedTime: 2.34
+                    timestamp: "2026-03-03T08:55:14Z"
+                soft_validation_failure:
+                  summary: Soft validation timeout (no exception)
+                  value:
+                    conditionMet: false
+                    condition: exists
+                    element: null
+                    waitedTime: 5.02
+                    timestamp: "2026-03-03T08:55:14Z"
+        '408':
+          description: Timeout - condition not met (only when softValidation is false)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    RunnerConfig:
+      type: object
+      properties:
+        defaultTimeout:
+          type: number
+          format: double
+          description: Default timeout for operations (seconds)
+          default: 5.0
+          example: 5.0
+        errorVerbosity:
+          type: string
+          enum: [simple, verbose]
+          description: Error response detail level
+          default: simple
+        maxConcurrentRequests:
+          type: number
+          format: integer
+          description: Maximum concurrent HTTP requests
+          default: 10
+          example: 10
+
+    UINode:
+      type: object
+      description: UI element node in the accessibility tree
+      properties:
+        type:
+          type: string
+          description: XCUIElement type
+          example: XCUIElementTypeButton
+        identifier:
+          type: string
+          description: Accessibility identifier
+          example: loginButton
+        label:
+          type: string
+          description: Accessibility label
+          example: Login
+        value:
+          type: string
+          description: Element value (for text fields, etc.)
+        isEnabled:
+          type: boolean
+          description: Whether element is enabled
+        isVisible:
+          type: boolean
+          description: Whether element is visible (exists and hittable)
+        frame:
+          type: object
+          description: Element frame in screen coordinates
+          properties:
+            x:
+              type: number
+            y:
+              type: number
+            width:
+              type: number
+            height:
+              type: number
+        children:
+          type: array
+          description: Child elements
+          items:
+            $ref: '#/components/schemas/UINode'
+
+    Error:
+      type: object
+      description: Error response (format varies by errorVerbosity config)
+      properties:
+        error:
+          type: string
+          description: Error category
+          example: ElementNotFound
+        message:
+          type: string
+          description: Human-readable error message
+          example: Element with identifier 'loginButton' not found within timeout
+        timestamp:
+          type: string
+          format: date-time
+        suggestion:
+          type: string
+          description: Suggested remediation (when available)
+          example: Try increasing timeout or verify element identifier
+        # Verbose mode only:
+        errorType:
+          type: string
+          description: Swift error type (verbose mode only)
+        localizedDescription:
+          type: string
+          description: Localized error description (verbose mode only)
+        stackTrace:
+          type: string
+          description: Stack trace (verbose mode + DEBUG build only)
+
+  securitySchemes: {}
+
+security: []

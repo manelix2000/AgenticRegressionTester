@@ -1,0 +1,64 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:AgenticRegressionTester}/agent-cli",
+            "name": "Debug agent-cli (agent-cli)",
+            "target": "agent-cli",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug agent-cli (agent-cli)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:AgenticRegressionTester}/agent-cli",
+            "name": "Release agent-cli (agent-cli)",
+            "target": "agent-cli",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release agent-cli (agent-cli)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:AgenticRegressionTester}/agent-cli",
+            "name": "Debug agent-cli (agent-cli)",
+            "target": "agent-cli",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug agent-cli (agent-cli)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:AgenticRegressionTester}/agent-cli",
+            "name": "Release agent-cli (agent-cli)",
+            "target": "agent-cli",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release agent-cli (agent-cli)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:AgenticRegressionTester}/agent-cli",
+            "name": "Debug agent-cli (agent-cli)",
+            "target": "agent-cli",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug agent-cli (agent-cli)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:AgenticRegressionTester}/agent-cli",
+            "name": "Release agent-cli (agent-cli)",
+            "target": "agent-cli",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release agent-cli (agent-cli)"
+        }
+    ]
+}

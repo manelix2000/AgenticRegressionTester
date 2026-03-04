@@ -1,0 +1,38 @@
+{
+  "configurations" : [
+    {
+      "id" : "B8E7F0A6-8C3D-4F2E-9E1B-5D6A7C8B9D0E",
+      "name" : "Configuration 1",
+      "options" : {
+        "environmentVariableEntries" : [
+          {
+            "key" : "RUNNER_PORT",
+            "value" : "8084"
+          },
+          {
+            "key" : "INSTALLED_APPLICATIONS",
+            "value" : ""
+          }
+        ]
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:IOSAgentDriver.xcodeproj",
+      "identifier" : "IOSAgentDriverUITests",
+      "name" : "IOSAgentDriverUITests"
+    }
+  },
+  "testTargets" : [
+    {
+      "skippedTests" : [],
+      "target" : {
+        "containerPath" : "container:IOSAgentDriver.xcodeproj",
+        "identifier" : "IOSAgentDriverUITests",
+        "name" : "IOSAgentDriverUITests"
+      }
+    }
+  ],
+  "version" : 1
+}
