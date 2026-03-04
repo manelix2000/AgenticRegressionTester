@@ -95,7 +95,7 @@ Using the myapp-qa-skill, test that the logout button works correctly
 
 Here it is a demo video that shows how we use it at **Privalia Brazil**. Enjoy!
 
-<video src="demo.mp4" controls width="100%"></video>
+https://github.com/user-attachments/assets/c853521c-0548-4e65-ac6a-34d8aced8ad2
 
 Prompt used:
 ```
