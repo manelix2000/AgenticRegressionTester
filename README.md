@@ -105,7 +105,7 @@ Using the myapp-qa-skill, test that the logout button works correctly
 
 Here it is two different demo videos that shows how we use it at **Privalia Brazil**. Enjoy!
 
-1) Simple test: tap on logout button
+1) Simple scenario: tap on logout button
 
 https://github.com/user-attachments/assets/c853521c-0548-4e65-ac6a-34d8aced8ad2
 
@@ -116,9 +116,9 @@ using the privalia qa agent, test the logout button
 
 **Interesting stuff:** The AI agent is clever enough to recreate the session when it is lost, in order to continue with the testing session.
 
-2) Complex test: add product to basket
+2) Complex scenario: add product to basket
 
-
+https://github.com/user-attachments/assets/9374c299-3e6e-43a9-be8a-452f924ec741
 
 Prompt used:
 ```
