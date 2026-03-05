@@ -178,6 +178,10 @@ Key categories of commands include:
 
 **See `references/SCENARIOS.md` for complete user journeys and navigation scenarios.**
 
+## UI tree Decisions
+
+When traversing the UI tree, ignore nodes that seem irrelevant, such as those without a label nor identifier.
+
 ## Test and Flow Decisions
 
 When executing tests, you may encounter situations where the next step is not clear or you need to make a decision based on the current state. In those cases:

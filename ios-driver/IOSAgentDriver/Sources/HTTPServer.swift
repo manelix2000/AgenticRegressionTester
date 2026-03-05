@@ -111,13 +111,19 @@ final class HTTPServer: Sendable {
     
     /// Safely execute a block on the main thread, avoiding deadlock
     /// If already on main thread, executes directly. Otherwise dispatches to main.
-    nonisolated private func ensureMainThread<T: Sendable>(_ block: @MainActor () throws -> T) rethrows -> T {
-        if Thread.isMainThread {
-            return try MainActor.assumeIsolated(block)
-        } else {
-            return try DispatchQueue.main.sync {
-                try MainActor.assumeIsolated(block)
-            }
+//    nonisolated private func ensureMainThread<T: Sendable>(_ block: @MainActor () throws -> T) rethrows -> T {
+//        if Thread.isMainThread {
+//            return try MainActor.assumeIsolated(block)
+//        } else {
+//            return try DispatchQueue.main.sync {
+//                try MainActor.assumeIsolated(block)
+//            }
+//        }
+//    }
+    
+    nonisolated private func ensureMainThread<T: Sendable>(_ block: @MainActor () throws -> T) async rethrows -> T {
+        try await MainActor.run {
+            try block()
         }
     }
     
@@ -288,7 +294,7 @@ final class HTTPServer: Sendable {
                 // Parse maxDepth from query params
                 let maxDepth: Int? = request.queryParams["maxDepth"].flatMap { Int($0) }
                 
-                let root = self.ensureMainThread {
+                let root = await self.ensureMainThread {
                     ElementQuery.getUITree(from: app, maxDepth: maxDepth)
                 }
                 
@@ -320,7 +326,7 @@ final class HTTPServer: Sendable {
                 
                 // ElementQuery.findElements is synchronous (XCTest APIs are synchronous)
                 // Use ensureMainThread to avoid deadlock
-                let elements = try self.ensureMainThread {
+                let elements = try await self.ensureMainThread {
                     try ElementQuery.findElements(
                         in: app,
                         identifier: findRequest.identifier,
@@ -364,7 +370,7 @@ final class HTTPServer: Sendable {
                 let waitStrategy: FindElementsRequest.WaitStrategy = 
                     waitStrategyStr == "immediate" ? .immediate : .wait
                 
-                let element = try self.ensureMainThread {
+                let element = try await self.ensureMainThread {
                     try ElementQuery.findElement(
                         in: app,
                         identifier: identifier,
@@ -398,7 +404,7 @@ final class HTTPServer: Sendable {
                 
                 let app = try await AppController.shared.getCurrentApp()
                 
-                let _ = try self.ensureMainThread {
+                let _ = try await self.ensureMainThread {
                     try ElementQuery.tap(
                         in: app,
                         identifier: tapRequest.identifier,
@@ -444,7 +450,7 @@ final class HTTPServer: Sendable {
                 
                 let app = try await AppController.shared.getCurrentApp()
                 
-                let _ = try self.ensureMainThread {
+                let _ = try await self.ensureMainThread {
                     try ElementQuery.typeText(
                         typeRequest.text,
                         in: app,
@@ -495,7 +501,7 @@ final class HTTPServer: Sendable {
                 
                 let app = try await AppController.shared.getCurrentApp()
                 
-                let _ = try self.ensureMainThread {
+                let _ = try await self.ensureMainThread {
                     try ElementQuery.swipe(
                         in: app,
                         direction: swipeRequest.direction,
@@ -546,7 +552,7 @@ final class HTTPServer: Sendable {
                 
                 let app = try await AppController.shared.getCurrentApp()
                 
-                let _ = try self.ensureMainThread {
+                let _ = try await self.ensureMainThread {
                     try ElementQuery.scrollToElement(
                         in: app,
                         toElementIdentifier: scrollRequest.toElementIdentifier,
@@ -594,7 +600,7 @@ final class HTTPServer: Sendable {
                 
                 let app = try await AppController.shared.getCurrentApp()
                 
-                let _ = try self.ensureMainThread {
+                let _ = try await self.ensureMainThread {
                     try ElementQuery.keyboardType(
                         in: app,
                         text: keyboardRequest.text,

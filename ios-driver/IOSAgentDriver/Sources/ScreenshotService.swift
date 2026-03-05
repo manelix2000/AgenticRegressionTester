@@ -53,7 +53,7 @@ enum ScreenshotService {
         // Get the XCUIElement to capture screenshot
         let element: XCUIElement
         if let id = identifier {
-            element = app.descendants(matching: .any).matching(identifier: id).firstMatch
+            element = app.descendants(matching: .any).safeMatching(identifier: id).firstMatch
         } else if let labelText = label {
             let labelPredicate = NSPredicate(format: "label == %@", labelText)
             element = app.descendants(matching: .any).matching(labelPredicate).firstMatch
@@ -64,7 +64,13 @@ enum ScreenshotService {
             throw QueryError.missingCriteria
         }
         
-        let screenshot = element.screenshot()
+        guard let screenshot = element.safeScreenshot() else {
+            throw QueryError.elementNotFound(
+                identifier: identifier,
+                predicate: predicate,
+                timeout: timeout
+            )
+        }
         return (screenshot.pngRepresentation, firstNode)
     }
     

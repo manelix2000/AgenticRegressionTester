@@ -33,7 +33,7 @@ final class ElementQuery: Sendable {
         
         if let identifier = identifier {
             // Search by accessibility identifier
-            query = app.descendants(matching: .any).matching(identifier: identifier)
+            query = app.descendants(matching: .any).safeMatching(identifier: identifier)
         } else if let labelText = label {
             // Search by label (exact match)
             let labelPredicate = NSPredicate(format: "label == %@", labelText)
@@ -66,7 +66,7 @@ final class ElementQuery: Sendable {
         }
         
         // Get all matching elements
-        let elements = query.allElementsBoundByIndex
+        let elements = query.safeAllElementsBoundByIndex()
         
         // Check if we found anything
         guard !elements.isEmpty else {
@@ -96,7 +96,7 @@ final class ElementQuery: Sendable {
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws -> UINode {
         
-        let element = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        let element = app.descendants(matching: .any).safeMatching(identifier: identifier).firstMatch
         
         if waitStrategy == .wait {
             guard element.waitForExistence(timeout: timeout) else {
@@ -150,7 +150,7 @@ final class ElementQuery: Sendable {
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws -> XCUIElement {
         
-        let element = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        let element = app.descendants(matching: .any).safeMatching(identifier: identifier).firstMatch
         
         if waitStrategy == .wait {
             guard element.waitForExistence(timeout: timeout) else {
@@ -371,7 +371,7 @@ final class ElementQuery: Sendable {
         let element: XCUIElement
         if identifier != nil || label != nil || predicate != nil {
             if let identifier = identifier {
-                element = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+                element = app.descendants(matching: .any).safeMatching(identifier: identifier).firstMatch
                 if waitStrategy == .wait {
                     guard element.waitForExistence(timeout: timeout) else {
                         throw QueryError.elementNotFound(identifier: identifier, predicate: nil, timeout: timeout)
@@ -446,7 +446,7 @@ final class ElementQuery: Sendable {
         // Find the scroll container
         let scrollContainer: XCUIElement
         if let containerId = scrollContainerIdentifier {
-            scrollContainer = app.descendants(matching: .any).matching(identifier: containerId).firstMatch
+            scrollContainer = app.descendants(matching: .any).safeMatching(identifier: containerId).firstMatch
             if waitStrategy == .wait {
                 guard scrollContainer.waitForExistence(timeout: timeout) else {
                     throw QueryError.elementNotFound(identifier: containerId, predicate: nil, timeout: timeout)
@@ -479,7 +479,7 @@ final class ElementQuery: Sendable {
         // Find the target element
         let targetElement: XCUIElement
         if let targetId = toElementIdentifier {
-            targetElement = scrollContainer.descendants(matching: .any).matching(identifier: targetId).firstMatch
+            targetElement = scrollContainer.descendants(matching: .any).safeMatching(identifier: targetId).firstMatch
         } else if let targetPred = toElementPredicate {
             let nsPredicate = NSPredicate(format: targetPred)
             var caughtException: NSException?

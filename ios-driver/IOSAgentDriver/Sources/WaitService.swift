@@ -264,7 +264,7 @@ final class WaitService {
         
         if let identifier = identifier {
             // Find by accessibility identifier
-            return app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+            return app.descendants(matching: .any).safeMatching(identifier: identifier).firstMatch
         }
         
         if let label = label {

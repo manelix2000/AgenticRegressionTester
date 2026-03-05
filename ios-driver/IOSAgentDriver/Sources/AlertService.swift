@@ -13,7 +13,7 @@ final class AlertService {
         
         // Check for springboard alerts (system-level)
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let springboardAlerts = springboard.alerts.allElementsBoundByIndex
+        let springboardAlerts = springboard.alerts.safeAllElementsBoundByIndex()
         
         for alert in springboardAlerts {
             if alert.exists {
@@ -22,7 +22,7 @@ final class AlertService {
         }
         
         // Check for in-app alerts
-        let appAlerts = app.alerts.allElementsBoundByIndex
+        let appAlerts = app.alerts.safeAllElementsBoundByIndex()
         
         for alert in appAlerts {
             if alert.exists {
@@ -31,7 +31,7 @@ final class AlertService {
         }
         
         // Check for sheets (action sheets)
-        let sheets = app.sheets.allElementsBoundByIndex
+        let sheets = app.sheets.safeAllElementsBoundByIndex()
         
         for sheet in sheets {
             if sheet.exists {
@@ -138,7 +138,7 @@ final class AlertService {
         
         // Get message (usually second static text)
         var message: String?
-        let staticTexts = alert.staticTexts.allElementsBoundByIndex
+        let staticTexts = alert.staticTexts.safeAllElementsBoundByIndex()
         if staticTexts.count > 1 {
             message = staticTexts[1].label
         } else if staticTexts.count == 1, staticTexts[0].label != title {
@@ -146,7 +146,7 @@ final class AlertService {
         }
         
         // Get all button labels
-        let buttons = alert.buttons.allElementsBoundByIndex.map { $0.label }
+        let buttons = alert.buttons.safeAllElementsBoundByIndex().map { $0.label }
         
         return AlertInfo(
             type: isSystem ? "system" : "alert",
@@ -167,13 +167,13 @@ final class AlertService {
         
         // Get message if exists
         var message: String?
-        let staticTexts = sheet.staticTexts.allElementsBoundByIndex
+        let staticTexts = sheet.staticTexts.safeAllElementsBoundByIndex()
         if staticTexts.count > 1 {
             message = staticTexts[1].label
         }
         
         // Get all button labels
-        let buttons = sheet.buttons.allElementsBoundByIndex.map { $0.label }
+        let buttons = sheet.buttons.safeAllElementsBoundByIndex().map { $0.label }
         
         return AlertInfo(
             type: "sheet",

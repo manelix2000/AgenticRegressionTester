@@ -34,7 +34,7 @@ struct UINode: Codable, Sendable {
             isSelected: element.isSelected,
             hasFocus: element.hasFocus,
             children: element.children(matching: .any)
-                .allElementsBoundByIndex
+                .safeAllElementsBoundByIndex()
                 .map { Self.from($0) }
         )
     }
@@ -82,7 +82,7 @@ struct UINode: Codable, Sendable {
             isSelected: element.isSelected,
             hasFocus: element.hasFocus,
             children: element.children(matching: .any)
-                .allElementsBoundByIndex
+                .safeAllElementsBoundByIndex()
                 .map { Self.from($0, maxDepth: maxDepth - 1) }
         )
     }
