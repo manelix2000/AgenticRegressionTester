@@ -30,6 +30,14 @@ Using the your-project QA skill, test that the logout button works correctly
 
 ---
 
+## Known limitations
+
+1. **iOS Simulator only** — Currently the tool supports UI testing exclusively on the iOS Simulator.
+
+2. **Stability** — Currently the agent driver can crash when maninpulating UI using XCTest and the sessino is lost.
+
+---
+
 ## Components
 
 ### `ios-driver`

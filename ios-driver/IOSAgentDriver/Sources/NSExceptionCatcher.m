@@ -15,3 +15,15 @@
 }
 
 @end
+
+@implementation XCUIElement (SafeHittability)
+
+- (BOOL)safeIsHittable {
+    @try {
+        return self.isHittable;
+    } @catch (NSException *) {
+        return NO;
+    }
+}
+
+@end

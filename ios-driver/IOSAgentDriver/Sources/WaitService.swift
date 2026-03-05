@@ -293,7 +293,7 @@ final class WaitService {
             title: element.title,
             frame: FrameWrapper(from: element.frame),
             isEnabled: element.isEnabled,
-            isVisible: element.exists && element.isHittable,
+            isVisible: element.exists && !element.frame.isEmpty,
             isSelected: element.isSelected,
             hasFocus: element.hasFocus,
             children: []  // Don't serialize children in wait results

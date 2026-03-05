@@ -415,8 +415,11 @@ If no guidance provided, test:
 
 ## Troubleshooting
 
-### "Session lost or unresponsive"
-If you loose connection to the session or it becomes unresponsive, create a new session and always reuse the same simulator. You can get session details using `agent-cli session get $SESSION_ID --json`. This way you can quickly get back to testing without reconfiguring everything. Never create a new simulator since it can take a long time to boot and install the app, and always launch the app again with the new session.
+### "Session or connection lost or unresponsive"
+
+If you loose connection with the driver process check tuist logs, agent driver logs or crash logs, in that order, to see if it is still running:
+  - If it is alive, try to reuse the session and make a health check, continuing the test on the same step before the disconnection.
+  - If connection is definetively lost, create a new session and always reuse the same simulator. You can get session details using `agent-cli session get $SESSION_ID --json`. This way you can quickly get back to testing without reconfiguring everything. Never create a new simulator since it can take a long time to boot and install the app, and always launch the app again with the new session. After two connection losses, report the issue and abort the test.
 
 ### "Login failed or invalid credentials"
 After two failed login attempts, the account may be temporarily locked or there is a backed issue, so abort the test.

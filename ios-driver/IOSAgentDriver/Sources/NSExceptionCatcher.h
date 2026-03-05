@@ -16,4 +16,18 @@ NS_ASSUME_NONNULL_BEGIN
     NS_SWIFT_NAME(safeMatching(_:exception:));
 @end
 
+/// An XCUIElement category that wraps isHittable access in an ObjC
+/// @try/@catch block. Elements with invalid frames throw
+/// NSInternalInconsistencyException when isHittable is evaluated — Swift
+/// cannot catch ObjC exceptions, so we intercept them here.
+@interface XCUIElement (SafeHittability)
+
+/// Safely checks whether the element is hittable, catching any
+/// NSInternalInconsistencyException thrown for elements with invalid frames.
+/// - Returns: YES if the element is hittable, NO if an exception occurred or
+///            the element is not hittable.
+- (BOOL)safeIsHittable NS_SWIFT_NAME(safeIsHittable());
+
+@end
+
 NS_ASSUME_NONNULL_END

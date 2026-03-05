@@ -267,7 +267,7 @@ final class ElementQuery: Sendable {
             throw QueryError.missingCriteria
         }
         
-        guard element.isHittable else {
+        guard element.safeIsHittable() else {
             throw InteractionError.elementNotHittable
         }
         
@@ -503,14 +503,14 @@ final class ElementQuery: Sendable {
         
         // Ensure element is visible by trying to scroll to it
         // XCTest will automatically scroll when we interact with it
-        if !targetElement.isHittable {
+        if !targetElement.safeIsHittable() {
             // Try to scroll by swiping until element becomes hittable
             var attempts = 0
             let maxAttempts = 10
-            while !targetElement.isHittable && attempts < maxAttempts {
+            while !targetElement.safeIsHittable() && attempts < maxAttempts {
                 scrollContainer.swipeUp()
                 attempts += 1
-                if targetElement.isHittable {
+                if targetElement.safeIsHittable() {
                     break
                 }
             }

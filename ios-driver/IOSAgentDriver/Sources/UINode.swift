@@ -30,7 +30,7 @@ struct UINode: Codable, Sendable {
             title: element.title,
             frame: FrameWrapper(from: element.frame),
             isEnabled: element.isEnabled,
-            isVisible: element.exists && element.isHittable,
+            isVisible: element.exists && !element.frame.isEmpty,
             isSelected: element.isSelected,
             hasFocus: element.hasFocus,
             children: element.children(matching: .any)
@@ -52,7 +52,7 @@ struct UINode: Codable, Sendable {
             title: element.title,
             frame: FrameWrapper(from: element.frame),
             isEnabled: element.isEnabled,
-            isVisible: element.exists && element.isHittable,
+            isVisible: element.exists && !element.frame.isEmpty,
             isSelected: element.isSelected,
             hasFocus: element.hasFocus,
             children: []
@@ -78,7 +78,7 @@ struct UINode: Codable, Sendable {
             title: element.title,
             frame: FrameWrapper(from: element.frame),
             isEnabled: element.isEnabled,
-            isVisible: element.exists && element.isHittable,
+            isVisible: element.exists && !element.frame.isEmpty,
             isSelected: element.isSelected,
             hasFocus: element.hasFocus,
             children: element.children(matching: .any)
