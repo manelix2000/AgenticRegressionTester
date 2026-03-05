@@ -101,9 +101,11 @@ Using the myapp-qa-skill, test that the logout button works correctly
 
 ---
 
-## Demo
+## Demos
 
-Here it is a demo video that shows how we use it at **Privalia Brazil**. Enjoy!
+Here it is two different demo videos that shows how we use it at **Privalia Brazil**. Enjoy!
+
+1) Simple test: tap on logout button
 
 https://github.com/user-attachments/assets/c853521c-0548-4e65-ac6a-34d8aced8ad2
 
@@ -112,7 +114,18 @@ Prompt used:
 using the privalia qa agent, test the logout button
 ```
 
-You will see in the video that the connection with de Agent Driver is lost, but the agent is clever enought to recreate it, in order to continue with the testing session.
+**Interesting stuff:** The AI agent is clever enough to recreate the session when it is lost, in order to continue with the testing session.
+
+2) Complex test: add product to basket
+
+
+
+Prompt used:
+```
+Using privalia qa skill, test I can add a product to basket from catalog
+```
+
+**Interesting stuff:** The AI agent is clever enough to find how to add products to the basket, how to delete products from basket using different strategies and finally how to dismiss the basket to log out.
 
 ---
 

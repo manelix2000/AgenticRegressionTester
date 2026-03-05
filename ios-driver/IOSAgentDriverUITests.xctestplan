@@ -7,7 +7,7 @@
         "environmentVariableEntries" : [
           {
             "key" : "RUNNER_PORT",
-            "value" : "8090"
+            "value" : "8081"
           },
           {
             "key" : "INSTALLED_APPLICATIONS",
