@@ -291,8 +291,8 @@ final class HTTPServer: Sendable {
             do {
                 let app = try await AppController.shared.getCurrentApp()
                 
-                // Parse maxDepth from query params
-                let maxDepth: Int? = request.queryParams["maxDepth"].flatMap { Int($0) }
+                // Parse maxDepth from query params (default: 20)
+                let maxDepth: Int = request.queryParams["maxDepth"].flatMap { Int($0) } ?? 20
                 
                 let root = await self.ensureMainThread {
                     ElementQuery.getUITree(from: app, maxDepth: maxDepth)

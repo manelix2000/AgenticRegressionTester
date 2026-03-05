@@ -178,8 +178,9 @@ Key categories of commands include:
 
 **See `references/SCENARIOS.md` for complete user journeys and navigation scenarios.**
 
-## UI tree Decisions
+## Get UI tree Decision Helper
 
+`get-ui-tree` command is very expensive in terms of execution time, so prefer using `find-element`, trying to find the element you want to interact with analyzing a screenshot of the current UI **before** calling `get-ui-tree`, and if it's not possible or it does not provide enough information, then use the most specific predicate possible, and only if you cannot find it, use `get-ui-tree` to explore the UI and find a better predicate.
 When traversing the UI tree, ignore nodes that seem irrelevant, such as those without a label nor identifier.
 
 ## Test and Flow Decisions
@@ -188,6 +189,9 @@ When executing tests, you may encounter situations where the next step is not cl
 
 ### Login Flow
 - If you are going to test a login flow and find that you are on the home screen with the user already logged in, ask the user if he wants to log out or continue with the current session. If after 5 seconds there is no response, continue with the current session and report that the user was already logged in and you continued with the test without logging out.
+
+### Ending Tests
+Just before your test is complete, ensure there are no products in the basket and log out.
 
 ---
 
@@ -421,7 +425,7 @@ If no guidance provided, test:
 
 ### "Session or connection lost or unresponsive"
 
-If you loose connection with the driver process check tuist logs, agent driver logs or crash logs, in that order, to see if it is still running:
+If you loose connection with the driver process, find and check agent driver logs, tuist session logs, or crash logs, in that order, to see if it is still running:
   - If it is alive, try to reuse the session and make a health check, continuing the test on the same step before the disconnection.
   - If connection is definetively lost, create a new session and always reuse the same simulator. You can get session details using `agent-cli session get $SESSION_ID --json`. This way you can quickly get back to testing without reconfiguring everything. Never create a new simulator since it can take a long time to boot and install the app, and always launch the app again with the new session. After two connection losses, report the issue and abort the test.
 

@@ -670,12 +670,15 @@ extension APICommands {
             commandName: "get-ui-tree",
             abstract: "Get the UI element tree",
             discussion: """
-                Retrieves the complete accessibility tree of the current app.
+                Retrieves the accessibility tree of the current app up to a maximum depth.
                 
                 \(ColorPrint.header("Examples:"))
                 
-                  \(ColorPrint.comment("# Get UI tree"))
+                  \(ColorPrint.comment("# Get UI tree (default depth: 20)"))
                   \(ColorPrint.code("agent-cli api get-ui-tree abc123"))
+                
+                  \(ColorPrint.comment("# Get UI tree with custom depth"))
+                  \(ColorPrint.code("agent-cli api get-ui-tree abc123 --depth 10"))
                 
                   \(ColorPrint.comment("# Get JSON output"))
                   \(ColorPrint.code("agent-cli api get-ui-tree abc123 --json"))
@@ -685,12 +688,18 @@ extension APICommands {
         @Argument(help: "Session ID")
         var sessionId: String
         
+        @Option(name: .long, help: "Maximum tree depth")
+        var depth: Int = 20
+        
         @Flag(name: .long, help: "Output as JSON")
         var json = false
         
         mutating func run() async throws {
             do {
-                let response: GetUITreeResponse = try await APIClient.shared.get("/ui/tree", sessionId: sessionId)
+                let response: GetUITreeResponse = try await APIClient.shared.get(
+                    "/ui/tree?maxDepth=\(depth)",
+                    sessionId: sessionId
+                )
                 
                 if json {
                     let jsonResponse = APIResponse(success: true, data: response, error: nil, executionTime: nil)

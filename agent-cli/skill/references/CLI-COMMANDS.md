@@ -785,7 +785,7 @@ agent-cli api get-ui-tree <session-id> [OPTIONS]
 - `<session-id>` - Session ID
 
 **Optional Parameters**:
-- `--max-depth <depth>` - Maximum tree depth (default: unlimited)
+- `--depth <depth>` - Maximum tree depth (default: unlimited)
 - `--json` - Output in JSON format
 
 **Examples**:
@@ -794,7 +794,7 @@ agent-cli api get-ui-tree <session-id> [OPTIONS]
 agent-cli api get-ui-tree abc-123
 
 # Get tree with max depth 3
-agent-cli api get-ui-tree abc-123 --max-depth 3
+agent-cli api get-ui-tree abc-123 --depth 3
 
 # Get as JSON
 agent-cli api get-ui-tree abc-123 --json

@@ -19,7 +19,7 @@ final class ElementQuery: Sendable {
         identifier: String? = nil,
         label: String? = nil,
         predicate: String? = nil,
-        timeout: TimeInterval = 5,
+        timeout: TimeInterval,
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws -> [UINode] {
         
@@ -92,7 +92,7 @@ final class ElementQuery: Sendable {
     @MainActor static func findElement(
         in app: XCUIApplication,
         identifier: String,
-        timeout: TimeInterval = 5,
+        timeout: TimeInterval,
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws -> UINode {
         
@@ -126,13 +126,9 @@ final class ElementQuery: Sendable {
     /// - Returns: Root UINode with complete hierarchy
     @MainActor static func getUITree(
         from app: XCUIApplication,
-        maxDepth: Int? = nil
+        maxDepth: Int
     ) -> UINode {
-        if let depth = maxDepth {
-            return UINode.from(app, maxDepth: depth)
-        } else {
-            return UINode.from(app)
-        }
+        return UINode.from(app, maxDepth: maxDepth)
     }
     
     /// Gets a specific XCUIElement by identifier
@@ -146,7 +142,7 @@ final class ElementQuery: Sendable {
     @MainActor static func getElement(
         in app: XCUIApplication,
         identifier: String,
-        timeout: TimeInterval = 5,
+        timeout: TimeInterval,
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws -> XCUIElement {
         
@@ -184,7 +180,7 @@ final class ElementQuery: Sendable {
     @MainActor static func getElement(
         in app: XCUIApplication,
         predicate predicateString: String,
-        timeout: TimeInterval = 5,
+        timeout: TimeInterval,
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws -> XCUIElement {
         
@@ -234,7 +230,7 @@ final class ElementQuery: Sendable {
         identifier: String? = nil,
         label: String? = nil,
         predicate: String? = nil,
-        timeout: TimeInterval = 5,
+        timeout: TimeInterval,
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws {
         
@@ -291,7 +287,7 @@ final class ElementQuery: Sendable {
         identifier: String? = nil,
         label: String? = nil,
         predicate: String? = nil,
-        timeout: TimeInterval = 5,
+        timeout: TimeInterval,
         waitStrategy: FindElementsRequest.WaitStrategy = .wait,
         clearFirst: Bool = false
     ) throws {
@@ -364,7 +360,7 @@ final class ElementQuery: Sendable {
         label: String? = nil,
         predicate: String? = nil,
         velocity: String = "fast",
-        timeout: TimeInterval = 5,
+        timeout: TimeInterval,
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws {
         // If no element specified, swipe on the app itself

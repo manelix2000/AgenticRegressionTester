@@ -36,6 +36,8 @@ Using the your-project QA skill, test that the logout button works correctly
 
 2. **Stability** — Currently the agent driver can crash when maninpulating UI using XCTest and the sessino is lost.
 
+3. **Expensive commands** — `get-ui-tree` is very expensive and can throw timeouts, so use it carefully.
+
 ---
 
 ## Components
