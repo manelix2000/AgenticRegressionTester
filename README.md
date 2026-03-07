@@ -12,7 +12,7 @@ The motivation behind this tool is the tedious nature of writing UI tests with f
 Using the your-project QA skill, test that the logout button works correctly
 ```
 
-> ⚠️ **THIS PROJECTS HAS BEEN BUILT ENTIRELY USING COPILOT AND CLAUDE LLM MODELS. Use it carefully.**
+> ⚠️ **THIS PROJECT IS BUILT ENTIRELY USING COPILOT AND CLAUDE LLM MODELS. Use it carefully.**
 
 
 ---
