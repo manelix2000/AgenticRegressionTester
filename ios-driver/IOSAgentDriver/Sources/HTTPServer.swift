@@ -644,7 +644,7 @@ final class HTTPServer: Sendable {
                 height: cgImage.height,
                 timestamp: ISO8601DateFormatter().string(from: Date())
             )
-            
+                
             return Response(statusCode: .ok, body: response)
         }
         
@@ -683,6 +683,19 @@ final class HTTPServer: Sendable {
             } catch {
                 return Response.error(
                     .notFound,
+                    message: error.localizedDescription
+                )
+            }
+        }
+        
+        // GET /ocr - Capture full screen and run OCR
+        router.get("/ocr") { _ in
+            do {
+                let document = try await OcrService.recognize()
+                return Response(statusCode: .ok, body: document)
+            } catch {
+                return Response.error(
+                    .internalServerError,
                     message: error.localizedDescription
                 )
             }

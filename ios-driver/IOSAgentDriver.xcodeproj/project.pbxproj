@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		1116C2E1EAB2087F2ED75500 /* AppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6963DC6B7CC0B6804D14F548 /* AppController.swift */; };
+		13B015F28C80B3BDA5073C71 /* OcrService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED76A0BD740A70DE6F3A8217 /* OcrService.swift */; };
 		157C3359BF20D80CB37ADBEC /* ScreenshotService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 998DE2EC3351EECAD9DE221F /* ScreenshotService.swift */; };
 		30BB477F74D7A7A7ADFFD4D1 /* HTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 075C6F3EBF8707AC551E9905 /* HTTPServer.swift */; };
 		3554944158795C39DED44B33 /* Router.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04660713296AC20ABE2CEF27 /* Router.swift */; };
@@ -56,6 +57,7 @@
 		A67BF27903CDE6AA496C9C23 /* Agent.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Agent.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B23B1F4174A4CE8324010BE3 /* ConfigurationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationService.swift; sourceTree = "<group>"; };
 		DC4F120BBF45F04B7CC6B3BE /* HTTPResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPResponse.swift; sourceTree = "<group>"; };
+		ED76A0BD740A70DE6F3A8217 /* OcrService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OcrService.swift; sourceTree = "<group>"; };
 		F3AF9F6BB183B99FABEB1597 /* WaitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaitService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -92,6 +94,7 @@
 				075C6F3EBF8707AC551E9905 /* HTTPServer.swift */,
 				A4203700B0242C5059CDDD4A /* IOSRunnerUITests.swift */,
 				2E693173FC5507D9B6E8ECAE /* NSExceptionCatcher.m */,
+				ED76A0BD740A70DE6F3A8217 /* OcrService.swift */,
 				04660713296AC20ABE2CEF27 /* Router.swift */,
 				998DE2EC3351EECAD9DE221F /* ScreenshotService.swift */,
 				401E0F2DCE5CB90EF2261784 /* UINode.swift */,
@@ -219,6 +222,7 @@
 				30BB477F74D7A7A7ADFFD4D1 /* HTTPServer.swift in Sources */,
 				7FC8DC98D1D2274FAB9F36DC /* IOSRunnerUITests.swift in Sources */,
 				B7E8E87D2E26401B8F7B338E /* NSExceptionCatcher.m in Sources */,
+				13B015F28C80B3BDA5073C71 /* OcrService.swift in Sources */,
 				3554944158795C39DED44B33 /* Router.swift in Sources */,
 				157C3359BF20D80CB37ADBEC /* ScreenshotService.swift in Sources */,
 				FCAB762D2407653F981685BC /* UINode.swift in Sources */,
