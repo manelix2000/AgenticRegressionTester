@@ -530,6 +530,7 @@ agent-cli api wait-for-element abc123 'identifier == "welcomeMessage"' --timeout
 | `api detect-alert <session>` | Check if system alert is present |
 | `api dismiss-alert <session> <buttonLabel>` | Dismiss alert by tapping button |
 | `api screenshot <session> [--output path]` | Capture screenshot |
+| `api ocr <session> [--filter text]` | Extract text from screen via OCR |
 | `api health <session>` | Check IOSAgentDriver health status |
 
 #### Examples
@@ -546,6 +547,10 @@ agent-cli api screenshot abc123
 
 # Screenshot with custom path
 agent-cli api screenshot abc123 --output ~/Desktop/test.png
+
+# Extract text from current screen
+agent-cli api ocr abc123
+agent-cli api ocr abc123 --filter "Login"
 
 # Health check
 agent-cli api health abc123
@@ -635,7 +640,7 @@ agent-cli simulator cleanup --force --json
 }
 ```
 
-#### API Commands (18)
+#### API Commands (19)
 ```bash
 # Get UI tree as JSON
 agent-cli api get-ui-tree <session-id> --json
@@ -645,6 +650,9 @@ agent-cli api launch-app <session-id> com.apple.mobilesafari --json
 
 # Take screenshot
 agent-cli api screenshot <session-id> --json
+
+# Extract text via OCR
+agent-cli api ocr <session-id> --json
 
 # Tap element
 agent-cli api tap <session-id> "identifier == 'button'" --json

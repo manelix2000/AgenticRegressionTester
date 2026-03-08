@@ -8,11 +8,10 @@ This document provides comprehensive reference for all `agent-cli` commands with
 
 - [Session Management (5 commands)](#session-management)
 - [Simulator Management (9 commands)](#simulator-management)
-- [API Commands (18 commands)](#api-commands)
-  - [App Lifecycle](#app-lifecycle)
-  - [UI Interaction](#ui-interaction)
-  - [UI Query](#ui-query)
-  - [Configuration](#configuration)
+- [API Commands (19 commands)](#api-commands)
+  - [Screenshots](#screenshots)
+  - [OCR](#ocr)
+  - [Alerts](#alerts)
 
 ---
 
@@ -993,6 +992,79 @@ agent-cli api screenshot abc-123 --json
     "width": 390,
     "height": 844,
     "timestamp": "2026-03-04T06:24:00Z"
+  }
+}
+```
+
+---
+
+#### api ocr
+
+**Description**: Capture the current screen and extract all visible text using Vision OCR. Returns text blocks with bounding boxes and confidence scores.
+
+**Syntax**:
+```bash
+agent-cli api ocr <session-id> [OPTIONS]
+```
+
+**Required Parameters**:
+- `<session-id>` - Session ID
+
+**Optional Parameters**:
+- `--filter <text>` - Only show lines containing this text (case-insensitive)
+- `--json` - Output full OCR document as JSON
+
+**Examples**:
+```bash
+# Print all detected text with positions
+agent-cli api ocr abc-123
+
+# Filter lines containing a specific word
+agent-cli api ocr abc-123 --filter "Login"
+
+# Get full structured JSON result
+agent-cli api ocr abc-123 --json
+```
+
+**Human-readable output**:
+```
+✅ OCR completed
+   Image size:  1178×2556 px
+   Blocks:      8
+   Lines found: 8
+
+Detected text:
+  18:53  100%  [142,68 142×44]
+  Fitness  100%  [117,439 133×33]
+  Q Búsqueda  50%  [480,2102 216×43]
+```
+
+**JSON Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "imageWidth": 1178,
+    "imageHeight": 2556,
+    "blocks": [
+      {
+        "box": { "x": 142, "y": 68, "width": 142, "height": 44 },
+        "lines": [
+          {
+            "text": "18:53",
+            "confidence": 1.0,
+            "box": { "x": 142, "y": 68, "width": 142, "height": 44 },
+            "words": [
+              {
+                "text": "18:53",
+                "confidence": 1.0,
+                "box": { "x": 142, "y": 68, "width": 142, "height": 44 }
+              }
+            ]
+          }
+        ]
+      }
+    ]
   }
 }
 ```

@@ -296,6 +296,39 @@ struct DismissAlertResponse: Codable {
     let success: Bool
 }
 
+// MARK: - OCR
+
+struct OCRBoundingBox: Codable {
+    let x: Int
+    let y: Int
+    let width: Int
+    let height: Int
+}
+
+struct OCRWord: Codable {
+    let text: String
+    let confidence: Float
+    let box: OCRBoundingBox
+}
+
+struct OCRLine: Codable {
+    let text: String
+    let confidence: Float
+    let box: OCRBoundingBox
+    let words: [OCRWord]
+}
+
+struct OCRBlock: Codable {
+    let box: OCRBoundingBox
+    let lines: [OCRLine]
+}
+
+struct OCRDocument: Codable {
+    let imageWidth: Int
+    let imageHeight: Int
+    let blocks: [OCRBlock]
+}
+
 // MARK: - Generic Response Wrapper (for JSON output)
 
 struct APIResponse<T: Codable>: Codable {

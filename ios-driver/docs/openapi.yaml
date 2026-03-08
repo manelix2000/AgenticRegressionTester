@@ -16,6 +16,7 @@ info:
     - Validate element states
     - Configure runtime behavior
     - Explicit wait conditions
+    - OCR text extraction from screen
     
     ## Base URL
     Default: `http://localhost:8080`
@@ -57,6 +58,8 @@ tags:
     description: Detect and dismiss alerts
   - name: Wait
     description: Explicit wait conditions
+  - name: OCR
+    description: Optical Character Recognition — extract text from the screen
 
 paths:
   /health:
@@ -585,9 +588,9 @@ paths:
                     type: string
 
   /screenshot:
-    post:
+    get:
       summary: Take full screenshot
-      description: Capture screenshot of entire screen
+      description: Capture a full-screen screenshot and return it as a base64-encoded PNG
       tags: [Screenshots]
       requestBody:
         required: true
@@ -668,6 +671,44 @@ paths:
                     type: string
         '404':
           description: Element not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ocr:
+    get:
+      summary: OCR full screen
+      description: |
+        Captures the current full-screen screenshot and runs Vision OCR on it.
+        Returns all detected text organized into blocks → lines → words, each with
+        pixel-coordinate bounding boxes (origin at top-left) and recognition confidence.
+      tags: [OCR]
+      responses:
+        '200':
+          description: OCR results for the current screen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OCRDocument'
+              examples:
+                home_screen:
+                  summary: Home screen with clock and app icons
+                  value:
+                    imageWidth: 1178
+                    imageHeight: 2556
+                    blocks:
+                      - box: { x: 141, y: 66, width: 143, height: 47 }
+                        lines:
+                          - text: "18:42"
+                            confidence: 1.0
+                            box: { x: 141, y: 66, width: 143, height: 47 }
+                            words:
+                              - text: "18:42"
+                                confidence: 1.0
+                                box: { x: 141, y: 66, width: 143, height: 47 }
+        '500':
+          description: Screenshot or OCR processing failed
           content:
             application/json:
               schema:
@@ -1138,6 +1179,103 @@ components:
           description: Child elements
           items:
             $ref: '#/components/schemas/UINode'
+
+    BoundingBox:
+      type: object
+      description: Pixel-coordinate bounding box with origin at top-left of the image
+      required: [x, y, width, height]
+      properties:
+        x:
+          type: integer
+          description: Left edge in pixels
+          example: 141
+        y:
+          type: integer
+          description: Top edge in pixels (origin at top-left)
+          example: 66
+        width:
+          type: integer
+          description: Width in pixels
+          example: 143
+        height:
+          type: integer
+          description: Height in pixels
+          example: 47
+
+    OCRWord:
+      type: object
+      description: A single recognized word
+      required: [text, confidence, box]
+      properties:
+        text:
+          type: string
+          description: Recognized word string
+          example: "Login"
+        confidence:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Recognition confidence (0–1)
+          example: 0.98
+        box:
+          $ref: '#/components/schemas/BoundingBox'
+
+    OCRLine:
+      type: object
+      description: A line of recognized text containing one or more words
+      required: [text, confidence, box, words]
+      properties:
+        text:
+          type: string
+          description: Full text of the line
+          example: "Login"
+        confidence:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Recognition confidence (0–1)
+          example: 0.98
+        box:
+          $ref: '#/components/schemas/BoundingBox'
+        words:
+          type: array
+          description: Individual words in this line
+          items:
+            $ref: '#/components/schemas/OCRWord'
+
+    OCRBlock:
+      type: object
+      description: A spatial block of text lines grouped by Vision
+      required: [box, lines]
+      properties:
+        box:
+          $ref: '#/components/schemas/BoundingBox'
+        lines:
+          type: array
+          description: Lines of text within this block
+          items:
+            $ref: '#/components/schemas/OCRLine'
+
+    OCRDocument:
+      type: object
+      description: Full OCR result for a captured screen
+      required: [imageWidth, imageHeight, blocks]
+      properties:
+        imageWidth:
+          type: integer
+          description: Width of the captured image in pixels
+          example: 1178
+        imageHeight:
+          type: integer
+          description: Height of the captured image in pixels
+          example: 2556
+        blocks:
+          type: array
+          description: All detected text blocks
+          items:
+            $ref: '#/components/schemas/OCRBlock'
 
     Error:
       type: object

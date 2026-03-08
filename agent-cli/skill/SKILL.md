@@ -115,10 +115,13 @@ agent-cli <command> --json
 # 2. Check response for success/failure
 # Look for: {"success": true, "data": {...}}
 
-# 3. Verify UI state if needed
+# 3. Use OCR to find text on screen (faster than get-ui-tree)
+agent-cli api ocr <session-id> --json
+
+# 4. Verify UI state if OCR is not enough with most specific predicate possible
 agent-cli api get-ui-tree <session-id> --json
 
-# 4. Take screenshot as evidence
+# 5. Take screenshot as evidence
 agent-cli api screenshot <session-id> --json
 ```
 
@@ -167,8 +170,9 @@ Key categories of commands include:
 - `api type-text` - Enter text
 - `api swipe` - Swipe gesture
 - `api screenshot` - Capture screen
+- `api ocr` - Extract all visible text from screen (use before `get-ui-tree`)
 - `api wait-for-element` - Wait for element to appear
-- And 10 more commands...
+- And 11 more commands...
 
 **See `references/CLI-COMMANDS.md` for complete syntax and examples.**
 
@@ -178,9 +182,9 @@ Key categories of commands include:
 
 **See `references/SCENARIOS.md` for complete user journeys and navigation scenarios.**
 
-## Get UI tree Decision Helper
+## Verify UI state if OCR is not enough
 
-`get-ui-tree` command is very expensive in terms of execution time, so prefer using `find-element`, trying to find the element you want to interact with analyzing a screenshot of the current UI **before** calling `get-ui-tree`, and if it's not possible or it does not provide enough information, then use the most specific predicate possible, and only if you cannot find it, use `get-ui-tree` to explore the UI and find a better predicate.
+`get-ui-tree` command is very expensive in terms of execution time, so prefer using `find-element`, trying to find the element you want to interact with running first `ocr` command **before** calling `get-ui-tree`, and if it's not possible or it does not provide enough information, then use the most specific predicate possible, and only if you cannot find it, use `get-ui-tree` to explore the UI and find a better predicate.
 When traversing the UI tree, ignore nodes that seem irrelevant, such as those without a label nor identifier.
 
 ## Test and Flow Decisions

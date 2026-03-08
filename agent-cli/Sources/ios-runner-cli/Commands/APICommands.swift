@@ -15,7 +15,7 @@ struct APICommands: AsyncParsableCommand {
               \(ColorPrint.label("App Management:")) launch-app, terminate-app, app-state, install-app
               \(ColorPrint.label("UI Discovery:")) get-ui-tree, find-elements, get-element
               \(ColorPrint.label("Interactions:")) tap, type-text, swipe
-              \(ColorPrint.label("Screenshots:")) screenshot
+              \(ColorPrint.label("Screenshots:")) screenshot, ocr
               \(ColorPrint.label("Validation:")) wait-for-element, assert
               \(ColorPrint.label("Configuration:")) get-config, set-timeout
               \(ColorPrint.label("Alerts:")) detect-alert, dismiss-alert
@@ -57,6 +57,7 @@ struct APICommands: AsyncParsableCommand {
             
             // Screenshots
             Screenshot.self,
+            OCR.self,
             
             // Validation
             WaitForElement.self,
@@ -1256,6 +1257,94 @@ extension APICommands {
                 }
             } catch let error as APIClient.APIError {
                 try handleAPIError(error, json: json, errorCode: "screenshot_failed")
+            }
+        }
+    }
+}
+
+// MARK: - OCR Command
+
+extension APICommands {
+    /// Captures the current screen and runs Vision OCR, returning all detected text.
+    struct OCR: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "ocr",
+            abstract: "Extract text from the current screen using OCR",
+            discussion: """
+                Captures a full-screen screenshot and runs Vision OCR on it.
+                Returns all recognized text with bounding boxes and confidence scores.
+                
+                \(ColorPrint.header("Examples:"))
+                
+                  \(ColorPrint.comment("# Print all detected text"))
+                  \(ColorPrint.code("agent-cli api ocr abc123"))
+                
+                  \(ColorPrint.comment("# Filter lines containing specific text"))
+                  \(ColorPrint.code("agent-cli api ocr abc123 --filter Login"))
+                
+                  \(ColorPrint.comment("# Get full OCR document as JSON"))
+                  \(ColorPrint.code("agent-cli api ocr abc123 --json"))
+                """
+        )
+        
+        @Argument(help: "Session ID")
+        var sessionId: String
+        
+        @Option(name: .long, help: "Filter: only show lines containing this text (case-insensitive)")
+        var filter: String?
+        
+        @Flag(name: .long, help: "Output full OCR document as JSON")
+        var json = false
+        
+        mutating func run() async throws {
+            do {
+                let document: OCRDocument = try await APIClient.shared.get("/ocr", sessionId: sessionId)
+                
+                let allLines = document.blocks.flatMap { $0.lines }
+                let filtered: [OCRLine]
+                if let query = filter {
+                    filtered = allLines.filter { $0.text.localizedCaseInsensitiveContains(query) }
+                } else {
+                    filtered = allLines
+                }
+                
+                if json {
+                    let jsonResponse = APIResponse(
+                        success: true,
+                        data: document,
+                        error: nil,
+                        executionTime: nil
+                    )
+                    let encoder = JSONEncoder()
+                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                    let data = try encoder.encode(jsonResponse)
+                    if let jsonString = String(data: data, encoding: .utf8) {
+                        print(jsonString)
+                    }
+                } else {
+                    print(ColorPrint.success("✅ OCR completed"))
+                    print("   \(ColorPrint.label("Image size:"))  \(document.imageWidth)×\(document.imageHeight) px")
+                    print("   \(ColorPrint.label("Blocks:"))      \(document.blocks.count)")
+                    print("   \(ColorPrint.label("Lines found:")) \(filtered.count)\(filter != nil ? " (filtered)" : "")")
+                    print("")
+                    
+                    if filtered.isEmpty {
+                        if filter != nil {
+                            print(ColorPrint.info("  No lines matched '\(filter!)'"))
+                        } else {
+                            print(ColorPrint.info("  No text detected on screen"))
+                        }
+                    } else {
+                        print(ColorPrint.header("Detected text:"))
+                        for line in filtered {
+                            let conf = String(format: "%.0f%%", line.confidence * 100)
+                            let box = "[\(line.box.x),\(line.box.y) \(line.box.width)×\(line.box.height)]"
+                            print("  \(ColorPrint.value(line.text))  \(ColorPrint.label(conf))  \(ColorPrint.comment(box))")
+                        }
+                    }
+                }
+            } catch let error as APIClient.APIError {
+                try APICommands.handleAPIError(error, json: json, errorCode: "ocr_failed")
             }
         }
     }
