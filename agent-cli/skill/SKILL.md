@@ -145,6 +145,9 @@ Structure your report:
 - [What didn't work]
 - [Potential regressions or bugs]
 
+**Usage**:
+- [Time spent and total tokens spent if possible]
+
 **Recommendation**:
 [Next steps or fixes needed]
 ```
