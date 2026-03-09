@@ -23,25 +23,30 @@ Sessions represent active IOSAgentDriver instances running on iOS simulators. Ea
 
 **Description**: Create a new testing session with a dedicated simulator and IOSAgentDriver instance.
 
+Either `--simulator` **or** both `--device` and `--ios` must be provided. When `--simulator` is used, device model and iOS version are inferred automatically from the simulator.
+
 **Syntax**:
 ```bash
+# New simulator
 agent-cli session create --device <device> --ios <version> [OPTIONS]
+
+# Existing simulator
+agent-cli session create --simulator <udid> [OPTIONS]
 ```
 
-**Required Parameters**:
-- `--device <device>` or `-d <device>` - Device model (e.g., "iPhone 15", "iPhone 15 Pro")
-- `--ios <version>` or `-i <version>` - iOS version (e.g., "18.6", "17.5")
+**Required (one of)**:
+- `--device <device>` / `-d <device>` + `--ios <version>` / `-i <version>` — Device model (e.g., "iPhone 15") and iOS version (e.g., "18.6"). Required when `--simulator` is **not** provided.
+- `--simulator <udid>` — Use an existing simulator UDID. Device and iOS version are inferred automatically.
 
 **Optional Parameters**:
 - `--port <port>` or `-p <port>` - Custom port number (default: auto-assigned from 8080+)
 - `--app <bundle-id>` or `-a <bundle-id>` - App bundle ID to install after creation
-- `--simulator <udid>` - Use existing simulator UDID (skips creation)
 - `--force-reinstall` - Force reinstall IOSAgentDriver even if present
 - `--json` - Output in JSON format
 
 **Examples**:
 ```bash
-# Create session with iPhone 15, iOS 18.6
+# Create session with a new iPhone 15 simulator, iOS 18.6
 agent-cli session create --device "iPhone 15" --ios "18.6"
 
 # Create with custom port
@@ -50,8 +55,11 @@ agent-cli session create -d "iPhone 15" -i "18.6" --port 9090
 # Create with JSON output
 agent-cli session create -d "iPhone 15" -i "18.6" --json
 
-# Create using existing simulator
-agent-cli session create --simulator ABC-123-DEF
+# Reuse an existing (already booted) simulator — device/iOS inferred automatically
+agent-cli session create --simulator A559903D-F8BE-4FE5-B38C-D7132241962A
+
+# Reuse existing simulator with explicit port
+agent-cli session create --simulator A559903D-F8BE-4FE5-B38C-D7132241962A --port 9090
 
 # Create and install app
 agent-cli session create -d "iPhone 15" -i "18.6" --app com.example.myapp

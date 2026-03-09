@@ -14,8 +14,11 @@ struct Session: ParsableCommand {
               \(ColorPrint.comment("# List all sessions"))
               \(ColorPrint.code("agent-cli session list"))
             
-              \(ColorPrint.comment("# Create a new session"))
+              \(ColorPrint.comment("# Create a new session (new simulator)"))
               \(ColorPrint.code("agent-cli session create --device \"iPhone 15\" --ios 18.6"))
+            
+              \(ColorPrint.comment("# Create a session reusing an existing simulator"))
+              \(ColorPrint.code("agent-cli session create --simulator <udid>"))
             
               \(ColorPrint.comment("# Get session details"))
               \(ColorPrint.code("agent-cli session get <session-id>"))
@@ -41,9 +44,11 @@ struct Session: ParsableCommand {
             discussion: """
                 Creates a new session with a dedicated simulator and IOSAgentDriver instance.
                 
+                Either --simulator OR both --device and --ios must be provided.
+                
                 \(ColorPrint.header("Examples:"))
                 
-                  \(ColorPrint.comment("# Specify device and iOS version"))
+                  \(ColorPrint.comment("# Specify device and iOS version (creates a new simulator)"))
                   \(ColorPrint.code("agent-cli session create --device \"iPhone 15\" --ios 18.6"))
                 
                   \(ColorPrint.comment("# Custom port"))
@@ -52,16 +57,19 @@ struct Session: ParsableCommand {
                   \(ColorPrint.comment("# With app installation"))
                   \(ColorPrint.code("agent-cli session create --device \"iPhone 15\" --ios 18.6 --app com.example.MyApp"))
                 
-                  \(ColorPrint.comment("# Use existing simulator"))
+                  \(ColorPrint.comment("# Use existing simulator (device and iOS are inferred automatically)"))
                   \(ColorPrint.code("agent-cli session create --simulator <udid>"))
+                
+                  \(ColorPrint.comment("# Use existing simulator with explicit port"))
+                  \(ColorPrint.code("agent-cli session create --simulator <udid> --port 9090"))
                 """
         )
         
-        @Option(name: .shortAndLong, help: "Device model (e.g., 'iPhone 15')")
-        var device: String
+        @Option(name: .shortAndLong, help: "Device model (e.g., 'iPhone 15'). Required unless --simulator is provided.")
+        var device: String?
         
-        @Option(name: .shortAndLong, help: "iOS version (e.g., '18.6')")
-        var ios: String
+        @Option(name: .shortAndLong, help: "iOS version (e.g., '18.6'). Required unless --simulator is provided.")
+        var ios: String?
         
         @Option(name: .shortAndLong, help: "Port number for IOSAgentDriver")
         var port: Int?
@@ -69,7 +77,7 @@ struct Session: ParsableCommand {
         @Option(name: .shortAndLong, help: "App bundle ID to install")
         var app: String?
         
-        @Option(name: .long, help: "Use existing simulator UDID (skip creation)")
+        @Option(name: .long, help: "Use existing simulator UDID (skip creation). Infers device and iOS version automatically.")
         var simulator: String?
         
         @Flag(name: .long, help: "Force reinstall IOSAgentDriver even if present")
@@ -81,38 +89,45 @@ struct Session: ParsableCommand {
         mutating func run() async throws {
             let sessionManager = SessionManager.shared
             
-            let deviceModel = device
-            let iOSVersion = ios
-            
             let sessionPort = port ?? sessionManager.nextAvailablePort()
-            
-            if !json {
-                print(ColorPrint.loading("Creating session..."))
-                print("   \(ColorPrint.label("Device:")) \(ColorPrint.value(deviceModel))")
-                print("   \(ColorPrint.label("iOS:")) \(ColorPrint.value(iOSVersion))")
-                print("   \(ColorPrint.label("Port:")) \(ColorPrint.value(String(sessionPort)))")
-                print("")
-            }
             
             // Step 1: Find or create simulator
             let simulatorUDID: String
             let ownsSimulator: Bool
+            let deviceModel: String
+            let iOSVersion: String
             
             if let existingUDID = simulator {
                 if !json {
                     print(ColorPrint.info("Using existing simulator: \(existingUDID)"))
                 }
                 
-                // Verify simulator exists
-                guard let _ = try SimulatorManager.shared.getSimulator(udid: existingUDID) else {
+                // Verify simulator exists and infer device info
+                guard let info = try SimulatorManager.shared.getSimulator(udid: existingUDID) else {
                     throw ValidationError(ColorPrint.error("Simulator not found: \(existingUDID)"))
                 }
                 
                 simulatorUDID = existingUDID
-                ownsSimulator = false  // Session does NOT own this simulator
+                ownsSimulator = false
+                deviceModel = device ?? info.deviceModel
+                iOSVersion = ios ?? info.iOSVersion
             } else {
-                // Create new simulator
+                // --device and --ios are required when not using --simulator
+                guard let deviceArg = device, !deviceArg.isEmpty else {
+                    throw ValidationError("Missing '--device': required when '--simulator' is not provided.")
+                }
+                guard let iosArg = ios, !iosArg.isEmpty else {
+                    throw ValidationError("Missing '--ios': required when '--simulator' is not provided.")
+                }
+                deviceModel = deviceArg
+                iOSVersion = iosArg
+                
                 if !json {
+                    print(ColorPrint.loading("Creating session..."))
+                    print("   \(ColorPrint.label("Device:")) \(ColorPrint.value(deviceModel))")
+                    print("   \(ColorPrint.label("iOS:")) \(ColorPrint.value(iOSVersion))")
+                    print("   \(ColorPrint.label("Port:")) \(ColorPrint.value(String(sessionPort)))")
+                    print("")
                     print(ColorPrint.loading("Creating new simulator..."))
                 }
                 
@@ -125,7 +140,11 @@ struct Session: ParsableCommand {
                     deviceType: deviceType,
                     runtime: runtimeId
                 )
-                ownsSimulator = true  // Session OWNS this simulator
+                ownsSimulator = true
+            }
+            
+            if !json && ownsSimulator {
+                print(ColorPrint.success("Created simulator: \(simulatorUDID)"))
             }
             
             // Step 2: Boot simulator (if we created it)
