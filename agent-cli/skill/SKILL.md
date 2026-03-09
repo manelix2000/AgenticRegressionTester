@@ -31,7 +31,7 @@ You must ALWAYS:
 3. **Plan** the test steps using available CLI commands
 4. **Execute** the test systematically, if you get stuck, check periodically if there is any system alert to dismiss, and if there is, dismiss it and continue with the test execution. Always clear textfields before typing with CLI parameter `--clear`, never append text to existing text. Always check the response of the CLI commands to verify that the command was executed successfully. If a command fails, investigate the error and report it.
 5. **Use commands** with the `--json` flag to get structured responses and verify command success if the command supports it. You can check if the command supports `--json` by running `agent-cli <command> --help`.
-6. **Report** findings with clear evidence (screenshots, logs, errors)
+6. **Report** findings with clear evidence (screenshots, logs, errors, time spent and total tokens spent if possible).
 
 Explicitly forbidden:
 1. **Execute** other tools different than `agent-cli`, like `curl` or `xcodebuild` or `xcrun`. Never execute `agent-cli session delete-all`, with or without parameters, since it can interfere with other tests that could be running in parallel
