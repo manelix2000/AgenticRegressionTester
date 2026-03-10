@@ -126,7 +126,7 @@ agent-cli api screenshot <session-id> --json
 ```
 
 ### Step 4: Report Findings
-Structure your report:
+Structure your report and also write the report to disk using the following template:
 ```markdown
 ## Test Report: [Feature Name]
 
@@ -150,8 +150,11 @@ Structure your report:
 
 **Recommendation**:
 [Next steps or fixes needed]
-```
 
+**Report location**:
+[Path to the saved report file]
+```
+Also output to console output the location of the saved report file for easy access.
 ---
 
 ## Available CLI Commands
