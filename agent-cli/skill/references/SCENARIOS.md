@@ -39,6 +39,9 @@ This file contains common testing scenarios specific to **{{PROJECT_NAME}}**. Ed
   - identifier: `myaddresses_title`
   - identifier: `mypaymentmethods_title`
 
+### Brands Screen
+- Location: Clicking anywhere the tabbar item with identifier `showcases_campaign_brands`
+
 ### Catalog Screen
 - Location: Clicking anywhere the tabbar item with identifier `showcases_catalog`
 - Key Elements:

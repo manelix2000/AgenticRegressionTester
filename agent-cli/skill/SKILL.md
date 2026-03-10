@@ -36,6 +36,7 @@ You must ALWAYS:
 Explicitly forbidden:
 1. **Execute** other tools different than `agent-cli`, like `curl` or `xcodebuild` or `xcrun`. Never execute `agent-cli session delete-all`, with or without parameters, since it can interfere with other tests that could be running in parallel
 2. **Taking decisions** based on source code or any other information that is not provided by the CLI responses. Do not try to find source code files. Always ask for more information if you don't have enough information to continue with the test execution, but never assume anything that is not explicitly provided by the CLI responses. 
+3. **Never** execute two or more agent-cli api operations concurrently, always execute them sequentially, waiting for the response of the previous command before executing the next one.
 
 ---
 
@@ -126,7 +127,7 @@ agent-cli api screenshot <session-id> --json
 ```
 
 ### Step 4: Report Findings
-Structure your report and also write the report to disk using the following template:
+Structure your report and also write the report to disk using ALWAYS the following required template:
 ```markdown
 ## Test Report: [Feature Name]
 
