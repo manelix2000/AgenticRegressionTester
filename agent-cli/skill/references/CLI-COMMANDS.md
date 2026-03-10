@@ -706,6 +706,47 @@ agent-cli api tap abc-123 "button" --json
 
 ---
 
+#### api tap-coordinate
+
+**Description**: Tap at absolute screen coordinates (x, y) in points.
+
+**Syntax**:
+```bash
+agent-cli api tap-coordinate <session-id> <x> <y> [OPTIONS]
+```
+
+**Required Parameters**:
+- `<session-id>` - Session ID
+- `<x>` - Absolute screen X coordinate in points
+- `<y>` - Absolute screen Y coordinate in points
+
+**Optional Parameters**:
+- `--json` - Output in JSON format
+
+**Examples**:
+```bash
+# Tap at coordinates
+agent-cli api tap-coordinate abc-123 200 400
+
+# Tap at coordinates with JSON output
+agent-cli api tap-coordinate abc-123 200 400 --json
+```
+
+**JSON Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "x": 200,
+    "y": 400,
+    "timestamp": "2024-03-08T18:59:00Z"
+  },
+  "executionTime": 0.12
+}
+```
+
+---
+
 #### api type-text
 
 **Description**: Type text into an element.

@@ -432,6 +432,37 @@ final class HTTPServer: Sendable {
             }
         }
         
+        router.post("/ui/tap-coordinate") { request in
+            do {
+                guard let tapRequest = try? request.decodeBody(TapCoordinateRequest.self) else {
+                    return Response.error(
+                        .badRequest,
+                        message: "Invalid request body. Expected: { \"x\": 100, \"y\": 200 }. Received: \(request.bodyString)"
+                    )
+                }
+
+                let app = try await AppController.shared.getCurrentApp()
+
+                await self.ensureMainThread {
+                    ElementQuery.tapAtCoordinate(in: app, x: tapRequest.x, y: tapRequest.y)
+                }
+
+                let response = TapCoordinateResponse(
+                    success: true,
+                    x: tapRequest.x,
+                    y: tapRequest.y,
+                    timestamp: ISO8601DateFormatter().string(from: Date())
+                )
+
+                return Response(statusCode: .ok, body: response)
+            } catch {
+                return Response.error(
+                    .internalServerError,
+                    message: error.localizedDescription
+                )
+            }
+        }
+
         router.post("/ui/type") { request in
             do {
                 guard let typeRequest = try? request.decodeBody(TypeTextRequest.self) else {

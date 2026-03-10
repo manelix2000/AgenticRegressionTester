@@ -270,6 +270,17 @@ final class ElementQuery: Sendable {
         element.tap()
     }
     
+    /// Taps at absolute screen coordinates using XCUICoordinate.
+    /// - Parameters:
+    ///   - app: The XCUIApplication providing the coordinate space
+    ///   - x: Absolute screen X coordinate in points
+    ///   - y: Absolute screen Y coordinate in points
+    @MainActor static func tapAtCoordinate(in app: XCUIApplication, x: CGFloat, y: CGFloat) {
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let target = origin.withOffset(CGVector(dx: x, dy: y))
+        target.tap()
+    }
+
     /// Types text into an element (typically a text field or text view)
     /// - Parameters:
     ///   - text: The text to type

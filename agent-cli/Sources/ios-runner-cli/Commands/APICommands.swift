@@ -52,6 +52,7 @@ struct APICommands: AsyncParsableCommand {
             
             // Interactions
             Tap.self,
+            TapCoordinate.self,
             TypeText.self,
             Swipe.self,
             
@@ -1005,6 +1006,60 @@ extension APICommands {
             
             // Default to identifier
             return (selector, nil, nil)
+        }
+    }
+
+    struct TapCoordinate: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "tap-coordinate",
+            abstract: "Tap at absolute screen coordinates",
+            discussion: """
+                Taps at the given absolute screen coordinates (x, y) in points.
+                
+                \(ColorPrint.header("Examples:"))
+                
+                  \(ColorPrint.comment("# Tap at (200, 400)"))
+                  \(ColorPrint.code("agent-cli api tap-coordinate abc123 200 400"))
+                
+                  \(ColorPrint.comment("# Tap at coordinates with JSON output"))
+                  \(ColorPrint.code("agent-cli api tap-coordinate abc123 200 400 --json"))
+                """
+        )
+
+        @Argument(help: "Session ID")
+        var sessionId: String
+
+        @Argument(help: "X coordinate in points")
+        var x: Double
+
+        @Argument(help: "Y coordinate in points")
+        var y: Double
+
+        @Flag(name: .long, help: "Output as JSON")
+        var json = false
+
+        mutating func run() async throws {
+            let request = TapCoordinateRequest(x: x, y: y)
+
+            do {
+                let response: TapCoordinateResponse = try await APIClient.shared.post("/ui/tap-coordinate", body: request, sessionId: sessionId)
+
+                if json {
+                    let jsonResponse = APIResponse(success: true, data: response, error: nil, executionTime: nil)
+                    let encoder = JSONEncoder()
+                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                    let data = try encoder.encode(jsonResponse)
+                    if let jsonString = String(data: data, encoding: .utf8) {
+                        print(jsonString)
+                    }
+                } else {
+                    print(ColorPrint.success("✅ Tapped at coordinates"))
+                    print("   \(ColorPrint.label("X:")) \(x)")
+                    print("   \(ColorPrint.label("Y:")) \(y)")
+                }
+            } catch let error as APIClient.APIError {
+                try handleAPIError(error, json: json, errorCode: "tap_coordinate_failed")
+            }
         }
     }
 

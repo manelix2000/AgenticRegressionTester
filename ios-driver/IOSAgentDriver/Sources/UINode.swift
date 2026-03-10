@@ -140,6 +140,20 @@ struct TapResponse: Codable, Sendable {
     let timestamp: String
 }
 
+/// Request for tapping at absolute screen coordinates
+struct TapCoordinateRequest: Codable, Sendable {
+    let x: CGFloat
+    let y: CGFloat
+}
+
+/// Response for tap-coordinate action
+struct TapCoordinateResponse: Codable, Sendable {
+    let success: Bool
+    let x: CGFloat
+    let y: CGFloat
+    let timestamp: String
+}
+
 /// Request for typing text
 struct TypeTextRequest: Codable, Sendable {
     let text: String

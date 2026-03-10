@@ -108,6 +108,18 @@ struct TapResponse: Codable {
     let tappedElement: UINode?
 }
 
+struct TapCoordinateRequest: Codable {
+    let x: Double
+    let y: Double
+}
+
+struct TapCoordinateResponse: Codable {
+    let success: Bool
+    let x: Double
+    let y: Double
+    let timestamp: String
+}
+
 struct TypeTextRequest: Codable {
     let identifier: String?
     let label: String?

@@ -390,6 +390,64 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /ui/tap-coordinate:
+    post:
+      summary: Tap at coordinates
+      description: Tap at absolute screen coordinates (x, y) in points
+      tags: [UI Interaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [x, y]
+              properties:
+                x:
+                  type: number
+                  format: double
+                  description: Absolute screen X coordinate in points
+                  example: 200
+                y:
+                  type: number
+                  format: double
+                  description: Absolute screen Y coordinate in points
+                  example: 400
+      responses:
+        '200':
+          description: Coordinate tapped successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  x:
+                    type: number
+                    format: double
+                    example: 200
+                  y:
+                    type: number
+                    format: double
+                    example: 400
+                  timestamp:
+                    type: string
+                    format: date-time
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /ui/type:
     post:
       summary: Type text
