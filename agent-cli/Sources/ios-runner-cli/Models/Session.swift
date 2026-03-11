@@ -12,6 +12,7 @@ struct RunnerSession: Codable, Identifiable {
     var status: SessionStatus
     var installedApp: String?
     var ownsSimulator: Bool  // True if session created the simulator, false if reused
+    var recordingPid: Int?   // PID of active simctl recordVideo process, nil if not recording
     
     enum SessionStatus: String, Codable {
         case initializing = "initializing"
@@ -35,6 +36,7 @@ struct RunnerSession: Codable, Identifiable {
         installedApp = try container.decodeIfPresent(String.self, forKey: .installedApp)
         // Default to true for backward compatibility (old sessions assumed ownership)
         ownsSimulator = try container.decodeIfPresent(Bool.self, forKey: .ownsSimulator) ?? true
+        recordingPid = try container.decodeIfPresent(Int.self, forKey: .recordingPid)
     }
     
     /// Create a new session with a unique ID
@@ -47,6 +49,7 @@ struct RunnerSession: Codable, Identifiable {
         status: SessionStatus = .initializing,
         installedApp: String? = nil,
         ownsSimulator: Bool = true,  // Default to true (session created simulator)
+        recordingPid: Int? = nil,
         createdAt: Date = Date(),
         lastAccessedAt: Date = Date()
     ) {
@@ -60,6 +63,7 @@ struct RunnerSession: Codable, Identifiable {
         self.status = status
         self.installedApp = installedApp
         self.ownsSimulator = ownsSimulator
+        self.recordingPid = recordingPid
     }
     
     mutating func updateAccess() {

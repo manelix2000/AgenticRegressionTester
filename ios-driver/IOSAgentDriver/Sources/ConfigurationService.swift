@@ -15,7 +15,7 @@ final class ConfigurationService: @unchecked Sendable {
         self._config = RunnerConfig(
             defaultTimeout: 5.0,
             errorVerbosity: .simple,
-            maxConcurrentRequests: 10
+            maxConcurrentRequests: 1
         )
     }
     
@@ -57,7 +57,7 @@ final class ConfigurationService: @unchecked Sendable {
         _config = RunnerConfig(
             defaultTimeout: 5.0,
             errorVerbosity: .simple,
-            maxConcurrentRequests: 10
+            maxConcurrentRequests: 1
         )
         return _config
     }

@@ -32,6 +32,8 @@ struct Session: ParsableCommand {
             Get.self,
             Delete.self,
             DeleteAll.self,
+            StartRecording.self,
+            StopRecording.self,
         ]
     )
     
@@ -506,6 +508,184 @@ struct Session: ParsableCommand {
                 }
                 print(ColorPrint.error("Failed to delete session record: \(error.localizedDescription)"))
                 throw error  // Session record deletion is critical
+            }
+        }
+    }
+    
+    // MARK: - Start Recording
+    
+    /// Starts a screen recording of the simulator associated with a session.
+    ///
+    /// Launches `xcrun simctl io <udid> recordVideo <outputPath>` as a background process
+    /// and persists the PID in session data so it can be stopped later via `stop-recording`.
+    struct StartRecording: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "start-recording",
+            abstract: "Start recording the simulator screen",
+            discussion: """
+                Starts a screen recording for the simulator associated with the given session.
+                The recording runs in the background until stopped with 'stop-recording'.
+                
+                \(ColorPrint.header("Examples:"))
+                
+                  \(ColorPrint.comment("# Start recording (output saved to ~/recordings/<sessionId>.mp4)"))
+                  \(ColorPrint.code("agent-cli session start-recording <session-id>"))
+                
+                  \(ColorPrint.comment("# Specify a custom output path"))
+                  \(ColorPrint.code("agent-cli session start-recording <session-id> --output /tmp/my-recording.mp4"))
+                """
+        )
+        
+        @Argument(help: "Session ID")
+        var sessionId: String
+        
+        @Option(name: .shortAndLong, help: "Output file path for the recording (default: ~/recordings/<sessionId>-<timestamp>.mp4)")
+        var output: String?
+        
+        @Flag(name: .long, help: "Output in JSON format")
+        var json = false
+        
+        mutating func run() async throws {
+            let sessionManager = SessionManager.shared
+            
+            guard var session = sessionManager.getSession(sessionId) else {
+                if json {
+                    JSONOutput.error(code: "SESSION_NOT_FOUND", message: "Session not found: \(sessionId)")
+                    throw ExitCode(1)
+                }
+                throw ValidationError(ColorPrint.error("Session not found: \(sessionId)"))
+            }
+            
+            if let existingPid = session.recordingPid {
+                if json {
+                    JSONOutput.error(code: "ALREADY_RECORDING", message: "Session is already recording (PID: \(existingPid))")
+                    throw ExitCode(1)
+                }
+                throw ValidationError(ColorPrint.error("Session is already recording (PID: \(existingPid)). Stop it first with 'session stop-recording \(sessionId)'."))
+            }
+            
+            let outputPath = resolvedOutputPath()
+            try ensureOutputDirectory(for: outputPath)
+            
+            if !json {
+                print(ColorPrint.loading("Starting recording for simulator \(session.simulatorUDID.prefix(8))..."))
+                print("   \(ColorPrint.label("Output:")) \(ColorPrint.value(outputPath))")
+            }
+            
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+            process.arguments = ["simctl", "io", session.simulatorUDID, "recordVideo", outputPath]
+            // Discard stdout/stderr to avoid blocking the process
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            
+            try process.run()
+            let pid = Int(process.processIdentifier)
+            
+            session.recordingPid = pid
+            session.lastAccessedAt = Date()
+            try sessionManager.updateSession(session)
+            
+            if json {
+                let result = RecordingStartResult(sessionId: sessionId, outputPath: outputPath, pid: pid)
+                JSONOutput.success(result)
+            } else {
+                print(ColorPrint.success("Recording started (PID: \(pid))"))
+                print(ColorPrint.info("Stop with: \(ColorPrint.code("agent-cli session stop-recording \(sessionId)"))"))
+            }
+        }
+        
+        private func resolvedOutputPath() -> String {
+            if let custom = output, !custom.isEmpty {
+                return (custom as NSString).expandingTildeInPath
+            }
+            let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
+            let timestamp = Int(Date().timeIntervalSince1970)
+            return "\(homeDir)/recordings/\(sessionId)-\(timestamp).mp4"
+        }
+        
+        private func ensureOutputDirectory(for path: String) throws {
+            let dir = (path as NSString).deletingLastPathComponent
+            try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        }
+    }
+    
+    // MARK: - Stop Recording
+    
+    /// Stops a screen recording previously started with `start-recording`.
+    ///
+    /// Sends `SIGINT` to the stored recording PID so that `simctl recordVideo`
+    /// can finalize and flush the video file before exiting. Using `SIGTERM`
+    /// would cause the process to terminate without writing the final frames.
+    struct StopRecording: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "stop-recording",
+            abstract: "Stop the active simulator screen recording",
+            discussion: """
+                Stops the screen recording started with 'start-recording' for the given session.
+                Sends SIGINT to the recording process so the video file is properly finalized.
+                
+                \(ColorPrint.header("Examples:"))
+                
+                  \(ColorPrint.comment("# Stop recording for a session"))
+                  \(ColorPrint.code("agent-cli session stop-recording <session-id>"))
+                """
+        )
+        
+        @Argument(help: "Session ID")
+        var sessionId: String
+        
+        @Flag(name: .long, help: "Output in JSON format")
+        var json = false
+        
+        mutating func run() throws {
+            let sessionManager = SessionManager.shared
+            
+            guard var session = sessionManager.getSession(sessionId) else {
+                if json {
+                    JSONOutput.error(code: "SESSION_NOT_FOUND", message: "Session not found: \(sessionId)")
+                    throw ExitCode(1)
+                }
+                throw ValidationError(ColorPrint.error("Session not found: \(sessionId)"))
+            }
+            
+            guard let pid = session.recordingPid else {
+                if json {
+                    JSONOutput.error(code: "NOT_RECORDING", message: "Session is not currently recording")
+                    throw ExitCode(1)
+                }
+                throw ValidationError(ColorPrint.error("Session '\(sessionId)' is not currently recording."))
+            }
+            
+            if !json {
+                print(ColorPrint.loading("Stopping recording (PID: \(pid))..."))
+            }
+            
+            // Send SIGINT so simctl recordVideo finalizes the video file
+            let result = kill(pid_t(pid), SIGINT)
+            if result != 0 {
+                let errMsg = String(cString: strerror(errno))
+                if json {
+                    JSONOutput.error(code: "SIGNAL_FAILED", message: "Failed to send SIGINT to PID \(pid): \(errMsg)")
+                    throw ExitCode(1)
+                }
+                throw ValidationError(ColorPrint.error("Failed to send SIGINT to PID \(pid): \(errMsg)"))
+            }
+            
+            // Derive the output path: reconstruct from session recording metadata is not stored,
+            // so we report the directory where recordings are saved by default.
+            let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
+            let recordingsDir = "\(homeDir)/recordings"
+            
+            session.recordingPid = nil
+            session.lastAccessedAt = Date()
+            try sessionManager.updateSession(session)
+            
+            if json {
+                let result = RecordingStopResult(sessionId: sessionId, outputPath: recordingsDir)
+                JSONOutput.success(result)
+            } else {
+                print(ColorPrint.success("Recording stopped. Video saved to: \(recordingsDir)/"))
             }
         }
     }

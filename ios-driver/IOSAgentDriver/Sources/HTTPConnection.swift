@@ -8,6 +8,9 @@ final class HTTPConnection: Sendable {
     private let connection: NWConnection
     private let router: Router
     private var buffer = Data()
+
+    /// Called when the connection is closed (cancelled or failed), so the server can clean up.
+    var onClose: (() -> Void)?
     
     init(connection: NWConnection, router: Router) {
         self.connection = connection
@@ -37,8 +40,10 @@ final class HTTPConnection: Sendable {
             print("🔗 Connection established")
         case .failed(let error):
             print("❌ Connection failed: \(error.localizedDescription)")
+            onClose?()
         case .cancelled:
             print("⚠️ Connection cancelled")
+            onClose?()
         default:
             break
         }

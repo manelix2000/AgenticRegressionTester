@@ -97,14 +97,44 @@ final class HTTPServer: Sendable {
     }
     
     private func handleNewConnection(_ nwConnection: NWConnection) {
+        let maxConnections = ConfigurationService.shared.getConfiguration().maxConcurrentRequests
+        guard connections.count < maxConnections else {
+            print("🚫 Max connections (\(maxConnections)) reached — rejecting new connection")
+            rejectConnectionWithTooManyRequests(nwConnection)
+            return
+        }
+
         let connection = HTTPConnection(connection: nwConnection, router: router)
         connections.append(connection)
-        
+
+        connection.onClose = { [weak self, weak connection] in
+            guard let self, let connection else { return }
+            self.connections.removeAll { $0 === connection }
+        }
+
         // Track the task so we can cancel it on shutdown
         let task = Task {
             await connection.start()            
         }
         connectionTasks.append(task)
+    }
+
+    private func rejectConnectionWithTooManyRequests(_ nwConnection: NWConnection) {
+        let body = #"{"error":"max_connections_reached","message":"Maximum number of connections reached. Try again later."}"#
+        guard let bodyData = body.data(using: .utf8) else { return }
+        let headers = [
+            "HTTP/1.1 429 Too Many Requests",
+            "Content-Type: application/json",
+            "Content-Length: \(bodyData.count)",
+            "Connection: close",
+            "\r\n"
+        ].joined(separator: "\r\n")
+        guard let headerData = headers.data(using: .utf8) else { return }
+
+        nwConnection.start(queue: .main)
+        nwConnection.send(content: headerData + bodyData, completion: .contentProcessed { _ in
+            nwConnection.cancel()
+        })
     }
     
     // MARK: - Helper Methods

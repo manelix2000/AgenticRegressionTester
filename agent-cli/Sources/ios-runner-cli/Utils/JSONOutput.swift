@@ -119,6 +119,17 @@ struct DeleteAllResult: Encodable {
     let deletedSessions: [String]
 }
 
+struct RecordingStartResult: Encodable {
+    let sessionId: String
+    let outputPath: String
+    let pid: Int
+}
+
+struct RecordingStopResult: Encodable {
+    let sessionId: String
+    let outputPath: String
+}
+
 struct SimulatorListData: Encodable {
     let simulators: [SimulatorSummary]
     let total: Int

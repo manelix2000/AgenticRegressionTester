@@ -41,7 +41,12 @@ This file contains common testing scenarios specific to **{{PROJECT_NAME}}**. Ed
 
 ### Brands Screen
 - Location: Clicking anywhere the tabbar item with identifier `showcases_campaign_brands`
-
+- Key Elements:
+  - identifier: `search_bar_text`
+  - identifier: `filter_brand_button`
+  - identifier: `product_list_sorting_button`
+  - identifier: `reset_search_bar_text`
+  
 ### Catalog Screen
 - Location: Clicking anywhere the tabbar item with identifier `showcases_catalog`
 - Key Elements:
