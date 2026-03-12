@@ -141,6 +141,12 @@ Structure your report and also write the report to disk using ALWAYS the followi
 - Screenshot 1: [description]
 - Error log: [command output]
 
+**Instructions**:
+- Command list: [memory of the `agent-cli` commands executed in order, with parameters, only the commands, without explanations, in a list format, and only the ones causing interactions with the app, not the ones for session management, screenshot capturing, error handling or exploration]
+  - [command 1]
+  - [command 2]
+  - ...
+
 **Findings**:
 - [What worked as expected]
 - [What didn't work]

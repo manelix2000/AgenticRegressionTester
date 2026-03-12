@@ -7,7 +7,7 @@
         "environmentVariableEntries" : [
           {
             "key" : "RUNNER_PORT",
-            "value" : "8082"
+            "value" : "8083"
           },
           {
             "key" : "INSTALLED_APPLICATIONS",
