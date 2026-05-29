@@ -50,8 +50,7 @@ enum OcrService {
     /// Captures the current full-screen screenshot and runs OCR on it.
     /// - Returns: An `OCRDocument` with all recognized text blocks, lines and words.
     /// - Throws: `OcrError` if the screenshot cannot be processed or recognition fails.
-    @MainActor
-    static func recognize() async throws -> OCRDocument {
+    static func recognize() throws -> OCRDocument {
         let pngData = ScreenshotService.captureFullScreen()
 
         guard let uiImage = UIImage(data: pngData),
@@ -62,7 +61,7 @@ enum OcrService {
         let imageWidth = cgImage.width
         let imageHeight = cgImage.height
 
-        let blocks = try await performRecognition(on: cgImage,
+        let blocks = try performRecognition(on: cgImage,
                                                   imageWidth: imageWidth,
                                                   imageHeight: imageHeight)
 
@@ -76,31 +75,22 @@ enum OcrService {
         on cgImage: CGImage,
         imageWidth: Int,
         imageHeight: Int
-    ) async throws -> [OCRBlock] {
-        return try await withCheckedThrowingContinuation { continuation in
-            let request = VNRecognizeTextRequest { request, error in
-                if let error {
-                    continuation.resume(throwing: OcrError.recognitionFailed(error))
-                    return
-                }
+    ) throws -> [OCRBlock] {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
 
-                let observations = request.results as? [VNRecognizedTextObservation] ?? []
-                let blocks = Self.mapObservationsToBlocks(observations,
-                                                          imageWidth: imageWidth,
-                                                          imageHeight: imageHeight)
-                continuation.resume(returning: blocks)
-            }
-
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
-
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            do {
-                try handler.perform([request])
-            } catch {
-                continuation.resume(throwing: OcrError.recognitionFailed(error))
-            }
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            throw OcrError.recognitionFailed(error)
         }
+
+        let observations = request.results ?? []
+        return mapObservationsToBlocks(observations,
+                                       imageWidth: imageWidth,
+                                       imageHeight: imageHeight)
     }
 
     /// Maps Vision observations into `OCRBlock` instances.

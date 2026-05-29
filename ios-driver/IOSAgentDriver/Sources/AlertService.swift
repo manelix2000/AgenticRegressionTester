@@ -7,7 +7,6 @@ final class AlertService {
     /// Detects all active alerts (springboard alerts, in-app alerts)
     /// - Parameter app: The application instance
     /// - Returns: List of detected alerts with their properties
-    @MainActor
     static func detectAlerts(in app: XCUIApplication) -> [AlertInfo] {
         var alerts: [AlertInfo] = []
         
@@ -39,6 +38,7 @@ final class AlertService {
             }
         }
         
+        DriverLog.log("AlertService.detectAlerts: springboard=\(springboardAlerts.count) app=\(appAlerts.count) sheets=\(sheets.count) total=\(alerts.count)")
         return alerts
     }
     
@@ -49,12 +49,12 @@ final class AlertService {
     ///   - timeout: Maximum time to wait for alert (default: 5 seconds)
     /// - Returns: Success status and dismissed alert info
     /// - Throws: AlertError if alert or button not found
-    @MainActor
     static func dismissAlert(
         in app: XCUIApplication,
         buttonLabel: String,
         timeout: TimeInterval = 5
     ) throws -> DismissedAlertInfo {
+        DriverLog.log("AlertService.dismissAlert: buttonLabel=\(buttonLabel)")
         // Check springboard alerts first (system alerts have priority)
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         
@@ -66,9 +66,10 @@ final class AlertService {
                     let alertInfo = extractAlertInfo(from: springboardAlert, isSystem: true)
                     button.tap()
                     
-                    // Wait for alert to disappear (synchronously)
+                    // Wait for alert to disappear
                     try waitForAlertDismissal(springboardAlert, timeout: 2)
                     
+                    DriverLog.log("AlertService.dismissAlert: dismissed system alert")
                     return DismissedAlertInfo(
                         success: true,
                         alertType: "system",
@@ -90,6 +91,7 @@ final class AlertService {
                     
                     try waitForAlertDismissal(appAlert, timeout: 2)
                     
+                    DriverLog.log("AlertService.dismissAlert: dismissed in-app alert")
                     return DismissedAlertInfo(
                         success: true,
                         alertType: "alert",
@@ -111,6 +113,7 @@ final class AlertService {
                     
                     try waitForAlertDismissal(sheet, timeout: 2)
                     
+                    DriverLog.log("AlertService.dismissAlert: dismissed sheet")
                     return DismissedAlertInfo(
                         success: true,
                         alertType: "sheet",
@@ -129,7 +132,6 @@ final class AlertService {
     
     // MARK: - Private Helpers
     
-    @MainActor
     private static func extractAlertInfo(from alert: XCUIElement, isSystem: Bool) -> AlertInfo {
         // Get title from static text or label
         let title = alert.staticTexts.firstMatch.label.isEmpty 
@@ -158,7 +160,6 @@ final class AlertService {
         )
     }
     
-    @MainActor
     private static func extractSheetInfo(from sheet: XCUIElement) -> AlertInfo {
         // Get title
         let title = sheet.staticTexts.firstMatch.label.isEmpty 
@@ -185,14 +186,13 @@ final class AlertService {
         )
     }
     
-    @MainActor
     private static func waitForAlertDismissal(_ element: XCUIElement, timeout: TimeInterval) throws {
         let startTime = Date()
         while element.exists {
             if Date().timeIntervalSince(startTime) > timeout {
                 throw AlertError.dismissalTimeout
             }
-            Thread.sleep(forTimeInterval: 0.1)  // Use Thread.sleep instead of Task.sleep
+            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
         }
     }
 }

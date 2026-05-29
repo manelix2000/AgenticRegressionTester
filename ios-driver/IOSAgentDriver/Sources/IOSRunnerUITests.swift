@@ -1,45 +1,67 @@
 import XCTest
 
-/// Main UITest class that hosts the HTTP server for iOS automation
-@MainActor
+/// Main UITest class that hosts the HTTP server for iOS automation.
+/// Uses RunLoop spinning (à la Facebook WDA) to keep the server alive.
 final class IOSAgentDriverUITests: XCTestCase {
     
     private var server: HTTPServer?
+    private var runnerPort: Int = 8080
     
-    override func setUp() async throws {
-        try await super.setUp()
+    override func setUp() {
+        super.setUp()
         continueAfterFailure = true
         
         // Start the HTTP server
         let port = ProcessInfo.processInfo.getRunnerPort() ?? 8080
-        server = try HTTPServer(port: port)
-        try await server?.start()
+        runnerPort = port
+        DriverLog.configure(port: port)
+        DriverLog.log("setUp: RUNNER_PORT=\(port), INSTALLED_APPLICATIONS=\(ProcessInfo.processInfo.environment["INSTALLED_APPLICATIONS"] ?? "<not set>")")
         
-        print("✅ IOSAgentDriver started on port \(port)")
+        do {
+            let server = try HTTPServer(port: port)
+            self.server = server
+            do {
+                try server.start()
+                DriverLog.log("✅ HTTPServer started on port \(port)")
+            } catch {
+                DriverLog.log("❌ HTTPServer.start() failed: \(error.localizedDescription)")
+            }
+        } catch {
+            DriverLog.log("❌ HTTPServer init failed on port \(port): \(error.localizedDescription)")
+        }
     }
     
-    override func tearDown() async throws {
-        // Stop the server
-        await server?.stop()
-        server = nil
+    override func tearDown() {
+        DriverLog.log("🔴 tearDown called — test is ending")
+        if let server {
+            server.stop()
+            self.server = nil
+        }
         
-        try await super.tearDown()
+        super.tearDown()
     }
     
-    /// Keep the test running to maintain server lifecycle
-    func testRunServer() throws {
-        // This test runs indefinitely to keep the server alive
-        print("🚀 Server is running. Send requests to http://localhost:\(server?.port ?? 8080)")
+    /// Intercepts XCTest failure recording to log what caused the test to end.
+    /// This helps diagnose crashes triggered by async XCTest assertions (e.g., after swipe gestures).
+    override func record(_ issue: XCTIssue) {
+        DriverLog.log("🔴 XCTest FAILURE recorded — type=\(issue.type.rawValue) description=\(issue.compactDescription)")
+        if let sourceLocation = issue.sourceCodeContext.location {
+            DriverLog.log("🔴   at \(sourceLocation.fileURL.lastPathComponent):\(sourceLocation.lineNumber)")
+        }
+        super.record(issue)
+    }
+    
+    /// Keep the test running to maintain server lifecycle.
+    /// RunLoop.current.run() blocks the main thread while still processing
+    /// events (DispatchQueue.main.sync from route handlers, UI updates, etc.)
+    func testRunServer() {
+        DriverLog.log("🚀 testRunServer: entering RunLoop on port \(runnerPort)")
         
-        // Keep the test alive using XCTWaiter (synchronous)
-        let expectation = XCTestExpectation(description: "Server running")
-        expectation.isInverted = true // Never fulfill this expectation
-        
-        // Wait for an extremely long time (effectively infinite)
-        let result = XCTWaiter.wait(for: [expectation], timeout: TimeInterval.infinity)
-        
-        // This will never complete due to inverted expectation
-        XCTAssertEqual(result, .timedOut)
+        // Spin the main RunLoop — this keeps the test alive and allows
+        // DispatchQueue.main.sync calls from route handlers to execute.
+        // The test ends when XCTest cancels it (e.g., via xcodebuild timeout
+        // or manual test stop).
+        RunLoop.current.run()
     }
 }
 

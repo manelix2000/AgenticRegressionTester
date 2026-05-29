@@ -1,17 +1,17 @@
 import Foundation
 
-/// Service for managing runtime configuration
-final class ConfigurationService: @unchecked Sendable {
+/// Service for managing runtime configuration.
+/// Thread-safety is guaranteed by the serial network queue: all access
+/// happens from route handlers that run sequentially on that queue.
+final class ConfigurationService {
     
     /// Shared instance
     static let shared = ConfigurationService()
     
-    /// Current configuration (protected by lock)
+    /// Current configuration
     private var _config: RunnerConfig
-    private let lock = NSLock()
     
     private init() {
-        // Initialize with defaults
         self._config = RunnerConfig(
             defaultTimeout: 5.0,
             errorVerbosity: .simple,
@@ -21,19 +21,13 @@ final class ConfigurationService: @unchecked Sendable {
     
     /// Get current configuration
     func getConfiguration() -> RunnerConfig {
-        lock.lock()
-        defer { lock.unlock() }
-        return _config
+        _config
     }
     
     /// Update configuration
     /// - Parameter updates: Configuration updates to apply
     /// - Returns: Updated configuration
     func updateConfiguration(_ updates: ConfigurationUpdate) -> RunnerConfig {
-        lock.lock()
-        defer { lock.unlock() }
-        
-        // Apply updates if provided
         if let timeout = updates.defaultTimeout {
             _config.defaultTimeout = timeout
         }
@@ -51,9 +45,6 @@ final class ConfigurationService: @unchecked Sendable {
     
     /// Reset configuration to defaults
     func resetConfiguration() -> RunnerConfig {
-        lock.lock()
-        defer { lock.unlock() }
-        
         _config = RunnerConfig(
             defaultTimeout: 5.0,
             errorVerbosity: .simple,
@@ -64,23 +55,17 @@ final class ConfigurationService: @unchecked Sendable {
     
     /// Get default timeout for operations
     func getDefaultTimeout() -> TimeInterval {
-        lock.lock()
-        defer { lock.unlock() }
-        return _config.defaultTimeout
+        _config.defaultTimeout
     }
     
     /// Get error verbosity setting
     func getErrorVerbosity() -> ErrorVerbosity {
-        lock.lock()
-        defer { lock.unlock() }
-        return _config.errorVerbosity
+        _config.errorVerbosity
     }
     
     /// Check if verbose errors are enabled
     func isVerboseErrorsEnabled() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return _config.errorVerbosity == .verbose
+        _config.errorVerbosity == .verbose
     }
 }
 

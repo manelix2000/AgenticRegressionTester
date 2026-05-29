@@ -55,6 +55,20 @@
     }
 }
 
+- (XCUIElementQuery *)safeMatchingPredicate:(NSPredicate *)predicate {
+    NSException *caughtException = nil;
+    XCUIElementQuery *query = [self safeMatchingPredicate:predicate exception:&caughtException];
+    if (query != nil) {
+        return query;
+    }
+    
+    NSLog(@"[IOSAgentDriver][NSExceptionCatcher] safeMatching(predicate:) returning empty query after %@: %@. Predicate: %@",
+          caughtException.name, caughtException.reason, predicate);
+    
+    // Return a query that always resolves to zero elements.
+    return [self matchingPredicate:[NSPredicate predicateWithValue:NO]];
+}
+
 @end
 
 @implementation XCUIElement (SafeScreenshot)
@@ -65,6 +79,20 @@
     } @catch (NSException *exception) {
         NSLog(@"[IOSAgentDriver][NSExceptionCatcher] safeScreenshot caught %@: %@. Element: %@",
               exception.name, exception.reason, self.description);
+        return nil;
+    }
+}
+
+@end
+
+@implementation NSPredicate (SafeCreation)
+
++ (nullable NSPredicate *)safePredicateWithFormat:(NSString *)format {
+    @try {
+        return [NSPredicate predicateWithFormat:format];
+    } @catch (NSException *exception) {
+        NSLog(@"[IOSAgentDriver][NSExceptionCatcher] safePredicateWithFormat caught %@: %@. Format: %@",
+              exception.name, exception.reason, format);
         return nil;
     }
 }

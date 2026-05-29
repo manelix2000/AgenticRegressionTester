@@ -15,9 +15,10 @@
 		5723D342F74ABDF7BED1C080 /* FrameWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15CB251DE842C4ED22CF8EA5 /* FrameWrapper.swift */; };
 		7D36157690E04D182D77D80C /* ConfigurationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B23B1F4174A4CE8324010BE3 /* ConfigurationService.swift */; };
 		7FC8DC98D1D2274FAB9F36DC /* IOSRunnerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4203700B0242C5059CDDD4A /* IOSRunnerUITests.swift */; };
-		823D53A7AFA5363C5607C2AA /* HTTPConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 050A765B7F9EB65B366DA6E3 /* HTTPConnection.swift */; };
 		87BAA72A3CEDD67AABEA708B /* ElementQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 469C01C8584E6C78C2B798AF /* ElementQuery.swift */; };
 		8F92260BE841BCCAF36BC8C3 /* AlertService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29065FEFE319FBEDDA4D9473 /* AlertService.swift */; };
+		947C03D3ED93354F7DCB07E9 /* DriverLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3938EC968CAF5AD7C11EEF61 /* DriverLog.swift */; };
+		9ED253C350AD5CD9DA08AD31 /* Swifter.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9C312315F995D28D688F901 /* Swifter.framework */; };
 		B7E8E87D2E26401B8F7B338E /* NSExceptionCatcher.m in Sources */ = {isa = PBXBuildFile; fileRef = 2E693173FC5507D9B6E8ECAE /* NSExceptionCatcher.m */; };
 		E5539D612438B860B170DDA9 /* HTTPResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC4F120BBF45F04B7CC6B3BE /* HTTPResponse.swift */; };
 		F2AB49FE4BD333EAC6F34611 /* ValidationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31D936361540ABC034F724C9 /* ValidationService.swift */; };
@@ -41,13 +42,13 @@
 
 /* Begin PBXFileReference section */
 		04660713296AC20ABE2CEF27 /* Router.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Router.swift; sourceTree = "<group>"; };
-		050A765B7F9EB65B366DA6E3 /* HTTPConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPConnection.swift; sourceTree = "<group>"; };
 		075C6F3EBF8707AC551E9905 /* HTTPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPServer.swift; sourceTree = "<group>"; };
 		15CB251DE842C4ED22CF8EA5 /* FrameWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameWrapper.swift; sourceTree = "<group>"; };
 		16ECF9116AEB8223CD92F987 /* IOSAgentDriverUITests-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "IOSAgentDriverUITests-Info.plist"; sourceTree = "<group>"; };
 		29065FEFE319FBEDDA4D9473 /* AlertService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertService.swift; sourceTree = "<group>"; };
 		2E693173FC5507D9B6E8ECAE /* NSExceptionCatcher.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = NSExceptionCatcher.m; sourceTree = "<group>"; };
 		31D936361540ABC034F724C9 /* ValidationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationService.swift; sourceTree = "<group>"; };
+		3938EC968CAF5AD7C11EEF61 /* DriverLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriverLog.swift; sourceTree = "<group>"; };
 		401E0F2DCE5CB90EF2261784 /* UINode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UINode.swift; sourceTree = "<group>"; };
 		469C01C8584E6C78C2B798AF /* ElementQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElementQuery.swift; sourceTree = "<group>"; };
 		6963DC6B7CC0B6804D14F548 /* AppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
@@ -55,6 +56,7 @@
 		998DE2EC3351EECAD9DE221F /* ScreenshotService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotService.swift; sourceTree = "<group>"; };
 		A4203700B0242C5059CDDD4A /* IOSRunnerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSRunnerUITests.swift; sourceTree = "<group>"; };
 		A67BF27903CDE6AA496C9C23 /* Agent.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Agent.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A9C312315F995D28D688F901 /* Swifter.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Swifter.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		B23B1F4174A4CE8324010BE3 /* ConfigurationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationService.swift; sourceTree = "<group>"; };
 		DC4F120BBF45F04B7CC6B3BE /* HTTPResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPResponse.swift; sourceTree = "<group>"; };
 		ED76A0BD740A70DE6F3A8217 /* OcrService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OcrService.swift; sourceTree = "<group>"; };
@@ -66,6 +68,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9ED253C350AD5CD9DA08AD31 /* Swifter.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -76,6 +79,7 @@
 			isa = PBXGroup;
 			children = (
 				A67BF27903CDE6AA496C9C23 /* Agent.xctest */,
+				A9C312315F995D28D688F901 /* Swifter.framework */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -86,9 +90,9 @@
 				29065FEFE319FBEDDA4D9473 /* AlertService.swift */,
 				6963DC6B7CC0B6804D14F548 /* AppController.swift */,
 				B23B1F4174A4CE8324010BE3 /* ConfigurationService.swift */,
+				3938EC968CAF5AD7C11EEF61 /* DriverLog.swift */,
 				469C01C8584E6C78C2B798AF /* ElementQuery.swift */,
 				15CB251DE842C4ED22CF8EA5 /* FrameWrapper.swift */,
-				050A765B7F9EB65B366DA6E3 /* HTTPConnection.swift */,
 				95B61FAA142ED772A2F2EA10 /* HTTPRequest.swift */,
 				DC4F120BBF45F04B7CC6B3BE /* HTTPResponse.swift */,
 				075C6F3EBF8707AC551E9905 /* HTTPServer.swift */,
@@ -214,9 +218,9 @@
 				8F92260BE841BCCAF36BC8C3 /* AlertService.swift in Sources */,
 				1116C2E1EAB2087F2ED75500 /* AppController.swift in Sources */,
 				7D36157690E04D182D77D80C /* ConfigurationService.swift in Sources */,
+				947C03D3ED93354F7DCB07E9 /* DriverLog.swift in Sources */,
 				87BAA72A3CEDD67AABEA708B /* ElementQuery.swift in Sources */,
 				5723D342F74ABDF7BED1C080 /* FrameWrapper.swift in Sources */,
-				823D53A7AFA5363C5607C2AA /* HTTPConnection.swift in Sources */,
 				F2D7630F4124668AE1760588 /* HTTPRequest.swift in Sources */,
 				E5539D612438B860B170DDA9 /* HTTPResponse.swift in Sources */,
 				30BB477F74D7A7A7ADFFD4D1 /* HTTPServer.swift in Sources */,
@@ -285,8 +289,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/IOSAgentDriver/Sources/IOSAgentDriver-Bridging-Header.h";
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
+				SWIFT_VERSION = 5;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -349,8 +352,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/IOSAgentDriver/Sources/IOSAgentDriver-Bridging-Header.h";
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
+				SWIFT_VERSION = 5;
 			};
 			name = Debug;
 		};

@@ -8,7 +8,6 @@ enum ScreenshotService {
     
     /// Captures a full screen screenshot
     /// - Returns: PNG image data
-    @MainActor
     static func captureFullScreen() -> Data {
         let screenshot = XCUIScreen.main.screenshot()
         return screenshot.pngRepresentation
@@ -24,7 +23,6 @@ enum ScreenshotService {
     ///   - waitStrategy: Wait strategy for element lookup
     /// - Returns: Tuple of PNG data and the UINode representation
     /// - Throws: QueryError if element not found
-    @MainActor
     static func captureElement(
         in app: XCUIApplication,
         identifier: String? = nil,
@@ -53,13 +51,27 @@ enum ScreenshotService {
         // Get the XCUIElement to capture screenshot
         let element: XCUIElement
         if let id = identifier {
-            element = app.descendants(matching: .any).safeMatching(identifier: id).firstMatch
+            element = try ElementQuery.getElement(
+                in: app,
+                identifier: id,
+                timeout: timeout,
+                waitStrategy: waitStrategy
+            )
         } else if let labelText = label {
             let labelPredicate = NSPredicate(format: "label == %@", labelText)
-            element = app.descendants(matching: .any).matching(labelPredicate).firstMatch
+            element = try ElementQuery.getElement(
+                in: app,
+                predicate: labelPredicate.predicateFormat,
+                timeout: timeout,
+                waitStrategy: waitStrategy
+            )
         } else if let predicateString = predicate {
-            let pred = NSPredicate(format: predicateString)
-            element = app.descendants(matching: .any).matching(pred).firstMatch
+            element = try ElementQuery.getElement(
+                in: app,
+                predicate: predicateString,
+                timeout: timeout,
+                waitStrategy: waitStrategy
+            )
         } else {
             throw QueryError.missingCriteria
         }

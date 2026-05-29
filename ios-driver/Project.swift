@@ -4,8 +4,7 @@ let project = Project(
     name: "IOSAgentDriver",
     settings: .settings(
         base: [
-            "SWIFT_VERSION": "6.0",
-            "SWIFT_STRICT_CONCURRENCY": "complete",
+            "SWIFT_VERSION": "5",
             "IPHONEOS_DEPLOYMENT_TARGET": "17.0",
             "SWIFT_OBJC_BRIDGING_HEADER": "$(SRCROOT)/IOSAgentDriver/Sources/IOSAgentDriver-Bridging-Header.h"
         ]
@@ -20,7 +19,9 @@ let project = Project(
             bundleId: "dev.tuist.IOSAgentDriverUITests",
             infoPlist: .default,
             sources: ["IOSAgentDriver/Sources/**"],
-            dependencies: []
+            dependencies: [
+                .external(name: "Swifter")
+            ]
         )
     ],
     schemes: [

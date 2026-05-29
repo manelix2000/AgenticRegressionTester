@@ -1,6 +1,6 @@
 import XCTest
 
-/// Service for validating element properties (synchronous)
+/// Service for validating element properties.
 enum ValidationService {
     
     // MARK: - Validation Methods
@@ -10,7 +10,6 @@ enum ValidationService {
     ///   - app: The application instance
     ///   - validations: Array of validation rules
     /// - Returns: Array of validation results
-    @MainActor
     static func validate(
         in app: XCUIApplication,
         validations: [ValidationRule]
@@ -30,7 +29,6 @@ enum ValidationService {
     ///   - app: The application instance
     ///   - validation: Validation rule
     /// - Returns: Validation result
-    @MainActor
     private static func validateSingle(
         in app: XCUIApplication,
         validation: ValidationRule
@@ -47,7 +45,6 @@ enum ValidationService {
         }
         
         do {
-            // Find elements using synchronous ElementQuery
             let nodes = try ElementQuery.findElements(
                 in: app,
                 identifier: validation.identifier,
@@ -120,7 +117,6 @@ enum ValidationService {
     ///   - app: The application instance
     ///   - assertion: Assertion rule
     /// - Throws: ValidationError if assertion fails
-    @MainActor
     static func assert(
         in app: XCUIApplication,
         assertion: ValidationRule

@@ -74,6 +74,7 @@ struct Response: Sendable {
         allHeaders["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
         allHeaders["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
         allHeaders["Access-Control-Max-Age"] = "86400" // 24 hours
+        allHeaders["Connection"] = "close"
         
         if let body = body {
             allHeaders["Content-Length"] = "\(body.count)"

@@ -1,167 +1,113 @@
 import Foundation
-import Network
+import Swifter
 import UIKit
 
-/// HTTP server using Apple's Network framework
-@MainActor
-final class HTTPServer: Sendable {
+/// HTTP server backed by Swifter.
+/// Bridges Swifter's request/response types to our internal `HTTPRequest` / `Response` types,
+/// delegating all routing to the existing `Router`.
+final class HTTPServer {
     
     let port: Int
-    private let listener: NWListener
-    private var connections: [HTTPConnection] = []
-    private var connectionTasks: [Task<Void, Never>] = []
+    private let server: HttpServer
     private let router: Router
     private var isRunning = false
     
     init(port: Int) throws {
         self.port = port
-        
-        // Create listener with TCP on specified port
-        let parameters = NWParameters.tcp
-        parameters.allowLocalEndpointReuse = true
-        
-        guard let listener = try? NWListener(using: parameters, on: NWEndpoint.Port(integerLiteral: UInt16(port))) else {
-            throw HTTPServerError.failedToCreateListener
-        }
-        
-        self.listener = listener
-        self.router = Router()
-        
-        setupRoutes()
+        self.server = HttpServer()
+        var configuredRouter = Router()
+        HTTPServer.setupRoutes(&configuredRouter)
+        self.router = configuredRouter
     }
     
-    deinit {
-        // Cancel all tasks on deallocation
-        for task in connectionTasks {
-            task.cancel()
-        }
-    }
-    
-    /// Start the HTTP server
-    func start() async throws {
+    /// Start the HTTP server on the configured port.
+    func start() throws {
         guard !isRunning else {
             throw HTTPServerError.alreadyRunning
         }
         
-        listener.stateUpdateHandler = { [weak self] state in
-            Task { @MainActor in
-                self?.handleStateChange(state)
-            }
+        // Use middleware to intercept every request and delegate to our Router.
+        // Returning a non-nil HttpResponse short-circuits Swifter's own routing.
+        let router = self.router
+        server.middleware.append { [weak self] swifterRequest in
+            guard self != nil else { return .internalServerError }
+            let httpRequest = HTTPServer.convertRequest(swifterRequest)
+            let response = router.handle(httpRequest)
+            return HTTPServer.convertResponse(response)
         }
         
-        listener.newConnectionHandler = { [weak self] connection in
-            Task { @MainActor in
-                self?.handleNewConnection(connection)
-            }
-        }
-        
-        listener.start(queue: .main)
+        try server.start(UInt16(port), forceIPv4: true, priority: .userInitiated)
         isRunning = true
+        DriverLog.log("📡 Server listening on port \(port)")
     }
     
-    /// Stop the HTTP server
-    func stop() async {
+    /// Stop the HTTP server.
+    func stop() {
         guard isRunning else { return }
-        
-        // Cancel all connection tasks first
-        for task in connectionTasks {
-            task.cancel()
-        }
-        connectionTasks.removeAll()
-        
-        // Cancel the listener
-        listener.cancel()
-        
-        // Close all active connections
-        for connection in connections {
-            await connection.close()
-        }
-        connections.removeAll()
-        
+        server.stop()
         isRunning = false
+        DriverLog.log("⚠️ Server stopped")
     }
     
-    // MARK: - Private Methods
+    // MARK: - Type Bridging
     
-    private func handleStateChange(_ state: NWListener.State) {
-        switch state {
-        case .ready:
-            print("📡 Server listening on port \(port)")
-        case .failed(let error):
-            print("❌ Server failed: \(error.localizedDescription)")
-        case .cancelled:
-            print("⚠️ Server cancelled")
-        default:
-            break
+    /// Converts a Swifter `HttpRequest` into our internal `HTTPRequest`.
+    private static func convertRequest(_ swifterRequest: HttpRequest) -> HTTPRequest {
+        let method = HTTPMethod(rawValue: swifterRequest.method) ?? .GET
+        
+        // Swifter's path already strips the query string
+        let path = swifterRequest.path
+        
+        // Convert query params from [(String, String)] to [String: String]
+        var queryParameters: [String: String] = [:]
+        for (key, value) in swifterRequest.queryParams {
+            queryParameters[key] = value
         }
+        
+        // Body: Swifter delivers body as [UInt8]
+        let bodyData: Data? = swifterRequest.body.isEmpty ? nil : Data(swifterRequest.body)
+        
+        return HTTPRequest(
+            method: method,
+            path: path,
+            queryParameters: queryParameters,
+            headers: swifterRequest.headers,
+            body: bodyData,
+            pathParams: [:]
+        )
     }
     
-    private func handleNewConnection(_ nwConnection: NWConnection) {
-        let maxConnections = ConfigurationService.shared.getConfiguration().maxConcurrentRequests
-        guard connections.count < maxConnections else {
-            print("🚫 Max connections (\(maxConnections)) reached — rejecting new connection")
-            rejectConnectionWithTooManyRequests(nwConnection)
-            return
+    /// Converts our internal `Response` into a Swifter `HttpResponse`.
+    private static func convertResponse(_ response: Response) -> HttpResponse {
+        // Build combined headers including CORS
+        var allHeaders = response.headers
+        allHeaders["Access-Control-Allow-Origin"] = "*"
+        allHeaders["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        allHeaders["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
+        allHeaders["Access-Control-Max-Age"] = "86400"
+        allHeaders["Connection"] = "close"
+        
+        if let body = response.body {
+            allHeaders["Content-Length"] = "\(body.count)"
         }
-
-        let connection = HTTPConnection(connection: nwConnection, router: router)
-        connections.append(connection)
-
-        connection.onClose = { [weak self, weak connection] in
-            guard let self, let connection else { return }
-            self.connections.removeAll { $0 === connection }
-        }
-
-        // Track the task so we can cancel it on shutdown
-        let task = Task {
-            await connection.start()            
-        }
-        connectionTasks.append(task)
-    }
-
-    private func rejectConnectionWithTooManyRequests(_ nwConnection: NWConnection) {
-        let body = #"{"error":"max_connections_reached","message":"Maximum number of connections reached. Try again later."}"#
-        guard let bodyData = body.data(using: .utf8) else { return }
-        let headers = [
-            "HTTP/1.1 429 Too Many Requests",
-            "Content-Type: application/json",
-            "Content-Length: \(bodyData.count)",
-            "Connection: close",
-            "\r\n"
-        ].joined(separator: "\r\n")
-        guard let headerData = headers.data(using: .utf8) else { return }
-
-        nwConnection.start(queue: .main)
-        nwConnection.send(content: headerData + bodyData, completion: .contentProcessed { _ in
-            nwConnection.cancel()
-        })
-    }
-    
-    // MARK: - Helper Methods
-    
-    /// Safely execute a block on the main thread, avoiding deadlock
-    /// If already on main thread, executes directly. Otherwise dispatches to main.
-//    nonisolated private func ensureMainThread<T: Sendable>(_ block: @MainActor () throws -> T) rethrows -> T {
-//        if Thread.isMainThread {
-//            return try MainActor.assumeIsolated(block)
-//        } else {
-//            return try DispatchQueue.main.sync {
-//                try MainActor.assumeIsolated(block)
-//            }
-//        }
-//    }
-    
-    nonisolated private func ensureMainThread<T: Sendable>(_ block: @MainActor () throws -> T) async rethrows -> T {
-        try await MainActor.run {
-            try block()
+        
+        return .raw(
+            response.statusCode.rawValue,
+            response.statusCode.reasonPhrase,
+            allHeaders
+        ) { writer in
+            if let body = response.body {
+                try writer.write(body)
+            }
         }
     }
     
     // MARK: - Route Setup
     
-    private func setupRoutes() {
+    private static func setupRoutes(_ router: inout Router) {
         // Health check endpoint
         router.get("/health") { request in
+            DriverLog.log("➡️ GET /health")
             return Response(
                 statusCode: .ok,
                 body: ["status": "ok", "version": "1.0.0"]
@@ -172,6 +118,7 @@ final class HTTPServer: Sendable {
         
         // GET /config - Get current configuration
         router.get("/config") { request in
+            DriverLog.log("➡️ GET /config")
             let config = ConfigurationService.shared.getConfiguration()
             
             let response = ConfigurationResponse(
@@ -184,6 +131,7 @@ final class HTTPServer: Sendable {
         
         // POST /config - Update configuration
         router.post("/config") { request in
+            DriverLog.log("➡️ POST /config")
             guard let body = request.body,
                   let updates = try? JSONDecoder().decode(ConfigurationUpdate.self, from: body) else {
                 return Response.error(
@@ -218,6 +166,7 @@ final class HTTPServer: Sendable {
         
         // POST /config/reset - Reset configuration to defaults
         router.post("/config/reset") { request in
+            DriverLog.log("➡️ POST /config/reset")
             let config = ConfigurationService.shared.resetConfiguration()
             
             let response = ConfigurationResponse(
@@ -230,6 +179,7 @@ final class HTTPServer: Sendable {
         
         // App list endpoint
         router.get("/app/list") { request in
+            DriverLog.log("➡️ GET /app/list")
             // Get installed applications from ProcessInfo helper
             let bundleIds = ProcessInfo.processInfo.getInstalledApplications()
             
@@ -252,11 +202,17 @@ final class HTTPServer: Sendable {
                     )
                 }
                 
-                let pid = try await AppController.shared.launch(
-                    bundleId: launchRequest.bundleId,
-                    arguments: launchRequest.arguments ?? [],
-                    environment: launchRequest.environment ?? [:]
-                )
+                DriverLog.log("➡️ POST /app/launch | bundleId=\(launchRequest.bundleId)")
+                DriverLog.log("POST /app/launch: dispatching to main queue")
+                let pid = try DispatchQueue.main.sync {
+                    try AppController.shared.launch(
+                        bundleId: launchRequest.bundleId,
+                        arguments: launchRequest.arguments ?? [],
+                        environment: launchRequest.environment ?? [:]
+                    )
+                }
+                
+                DriverLog.log("✅ POST /app/launch completed | bundleId=\(launchRequest.bundleId) pid=\(pid)")
                 
                 let response = LaunchAppResponse(
                     success: true,
@@ -267,6 +223,7 @@ final class HTTPServer: Sendable {
                 
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ POST /app/launch failed: \(error.localizedDescription)")
                 return Response.error(
                     .internalServerError,
                     message: error.localizedDescription
@@ -276,7 +233,10 @@ final class HTTPServer: Sendable {
         
         router.post("/app/terminate") { _ in
             do {
-                try await AppController.shared.terminate()
+                DriverLog.log("➡️ POST /app/terminate")
+                DriverLog.log("POST /app/terminate: dispatching to main queue")
+                try DispatchQueue.main.sync { try AppController.shared.terminate() }
+                DriverLog.log("✅ POST /app/terminate completed")
                 
                 let response = TerminateAppResponse(
                     success: true,
@@ -285,6 +245,7 @@ final class HTTPServer: Sendable {
                 
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ POST /app/terminate failed: \(error.localizedDescription)")
                 return Response.error(
                     .conflict,
                     message: error.localizedDescription
@@ -294,9 +255,13 @@ final class HTTPServer: Sendable {
         
         router.get("/app/state") { _ in
             do {
-                let state = try await AppController.shared.getState()
+                DriverLog.log("➡️ GET /app/state")
+                DriverLog.log("GET /app/state: dispatching to main queue")
+                let state = try DispatchQueue.main.sync { try AppController.shared.getState() }
+                DriverLog.log("✅ GET /app/state completed")
                 return Response(statusCode: .ok, body: state)
             } catch {
+                DriverLog.log("❌ GET /app/state failed: \(error.localizedDescription)")
                 return Response.error(
                     .conflict,
                     message: error.localizedDescription
@@ -306,9 +271,13 @@ final class HTTPServer: Sendable {
         
         router.post("/app/activate") { _ in
             do {
-                try await AppController.shared.activate()
+                DriverLog.log("➡️ POST /app/activate")
+                DriverLog.log("POST /app/activate: dispatching to main queue")
+                try DispatchQueue.main.sync { try AppController.shared.activate() }
+                DriverLog.log("✅ POST /app/activate completed")
                 return Response.success(["success": true])
             } catch {
+                DriverLog.log("❌ POST /app/activate failed: \(error.localizedDescription)")
                 return Response.error(
                     .conflict,
                     message: error.localizedDescription
@@ -319,13 +288,16 @@ final class HTTPServer: Sendable {
         // UI tree and element query endpoints
         router.get("/ui/tree") { request in
             do {
-                let app = try await AppController.shared.getCurrentApp()
-                
+                DriverLog.log("➡️ GET /ui/tree")
                 // Parse maxDepth from query params (default: 20)
                 let maxDepth: Int = request.queryParams["maxDepth"].flatMap { Int($0) } ?? 15
                 
-                let root = await self.ensureMainThread {
-                    ElementQuery.getUITree(from: app, maxDepth: maxDepth)
+                DriverLog.log("GET /ui/tree: dispatching to main queue | maxDepth=\(maxDepth)")
+                
+                let root = try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        try ElementQuery.getUITree(from: app, maxDepth: maxDepth)
+                    }
                 }
                 
                 let response = UITreeResponse(
@@ -336,6 +308,7 @@ final class HTTPServer: Sendable {
                 
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ GET /ui/tree failed: \(error.localizedDescription)")
                 return Response.error(
                     .conflict,
                     message: error.localizedDescription
@@ -345,6 +318,7 @@ final class HTTPServer: Sendable {
         
         router.post("/ui/find") { request in
             do {
+                let defaultTimeout = ConfigurationService.shared.getDefaultTimeout()
                 guard let findRequest = try? request.decodeBody(FindElementsRequest.self) else {
                     return Response.error(
                         .badRequest,
@@ -352,19 +326,19 @@ final class HTTPServer: Sendable {
                     )
                 }
                 
-                let app = try await AppController.shared.getCurrentApp()
-                
-                // ElementQuery.findElements is synchronous (XCTest APIs are synchronous)
-                // Use ensureMainThread to avoid deadlock
-                let elements = try await self.ensureMainThread {
-                    try ElementQuery.findElements(
-                        in: app,
-                        identifier: findRequest.identifier,
-                        label: findRequest.label,
-                        predicate: findRequest.predicate,
-                        timeout: findRequest.timeout ?? ConfigurationService.shared.getDefaultTimeout(),
-                        waitStrategy: findRequest.waitStrategy ?? .wait
-                    )
+                DriverLog.log("➡️ POST /ui/find | identifier=\(findRequest.identifier ?? "-") label=\(findRequest.label ?? "-") predicate=\(findRequest.predicate ?? "-")")
+                DriverLog.log("POST /ui/find: dispatching to main queue")
+                let elements = try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        try ElementQuery.findElements(
+                            in: app,
+                            identifier: findRequest.identifier,
+                            label: findRequest.label,
+                            predicate: findRequest.predicate,
+                            timeout: findRequest.timeout ?? defaultTimeout,
+                            waitStrategy: findRequest.waitStrategy ?? .wait
+                        )
+                    }
                 }
                 
                 let response = ElementsResponse(
@@ -373,8 +347,10 @@ final class HTTPServer: Sendable {
                     timestamp: ISO8601DateFormatter().string(from: Date())
                 )
                 
+                DriverLog.log("✅ POST /ui/find completed | count=\(elements.count)")
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ POST /ui/find failed: \(error.localizedDescription)")
                 return Response.error(
                     .notFound,
                     message: error.localizedDescription
@@ -384,6 +360,8 @@ final class HTTPServer: Sendable {
         
         router.get("/ui/element/:identifier") { request in
             do {
+                DriverLog.log("➡️ GET /ui/element/:identifier")
+                let defaultTimeout = ConfigurationService.shared.getDefaultTimeout()
                 guard let identifier = request.pathParams["identifier"] else {
                     return Response.error(
                         .badRequest,
@@ -391,23 +369,26 @@ final class HTTPServer: Sendable {
                     )
                 }
                 
-                let app = try await AppController.shared.getCurrentApp()
-                
                 // Parse query params
                 let timeout: TimeInterval = request.queryParams["timeout"]
-                    .flatMap { Double($0) } ?? ConfigurationService.shared.getDefaultTimeout()
+                    .flatMap { Double($0) } ?? defaultTimeout
                 let waitStrategyStr = request.queryParams["waitStrategy"] ?? "wait"
                 let waitStrategy: FindElementsRequest.WaitStrategy = 
                     waitStrategyStr == "immediate" ? .immediate : .wait
                 
-                let element = try await self.ensureMainThread {
-                    try ElementQuery.findElement(
-                        in: app,
-                        identifier: identifier,
-                        timeout: timeout,
-                        waitStrategy: waitStrategy
-                    )
+                DriverLog.log("GET /ui/element: dispatching to main queue | identifier=\(identifier)")
+                let element = try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        try ElementQuery.findElement(
+                            in: app,
+                            identifier: identifier,
+                            timeout: timeout,
+                            waitStrategy: waitStrategy
+                        )
+                    }
                 }
+                
+                DriverLog.log("✅ GET /ui/element completed | identifier=\(identifier)")
                 
                 let response = ElementResponse(
                     element: element,
@@ -416,6 +397,7 @@ final class HTTPServer: Sendable {
                 
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ GET /ui/element failed: \(error.localizedDescription)")
                 return Response.error(
                     .notFound,
                     message: error.localizedDescription
@@ -425,6 +407,7 @@ final class HTTPServer: Sendable {
         
         router.post("/ui/tap") { request in
             do {
+                let defaultTimeout = ConfigurationService.shared.getDefaultTimeout()
                 guard let tapRequest = try? request.decodeBody(TapRequest.self) else {
                     return Response.error(
                         .badRequest,
@@ -432,17 +415,20 @@ final class HTTPServer: Sendable {
                     )
                 }
                 
-                let app = try await AppController.shared.getCurrentApp()
+                DriverLog.log("➡️ POST /ui/tap | identifier=\(tapRequest.identifier ?? "-") label=\(tapRequest.label ?? "-") predicate=\(tapRequest.predicate ?? "-")")
+                DriverLog.log("POST /ui/tap: dispatching to main queue")
                 
-                let _ = try await self.ensureMainThread {
-                    try ElementQuery.tap(
-                        in: app,
-                        identifier: tapRequest.identifier,
-                        label: tapRequest.label,
-                        predicate: tapRequest.predicate,
-                        timeout: tapRequest.timeout ?? ConfigurationService.shared.getDefaultTimeout(),
-                        waitStrategy: tapRequest.waitStrategy ?? .wait
-                    )
+                try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        try ElementQuery.tap(
+                            in: app,
+                            identifier: tapRequest.identifier,
+                            label: tapRequest.label,
+                            predicate: tapRequest.predicate,
+                            timeout: tapRequest.timeout ?? defaultTimeout,
+                            waitStrategy: tapRequest.waitStrategy ?? .wait
+                        )
+                    }
                 }
                 
                 let response = TapResponse(
@@ -453,8 +439,10 @@ final class HTTPServer: Sendable {
                     timestamp: ISO8601DateFormatter().string(from: Date())
                 )
                 
+                DriverLog.log("✅ POST /ui/tap completed")
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ POST /ui/tap failed: \(error.localizedDescription)")
                 return Response.error(
                     .notFound,
                     message: error.localizedDescription
@@ -471,12 +459,15 @@ final class HTTPServer: Sendable {
                     )
                 }
 
-                let app = try await AppController.shared.getCurrentApp()
-
-                await self.ensureMainThread {
-                    ElementQuery.tapAtCoordinate(in: app, x: tapRequest.x, y: tapRequest.y)
+                DriverLog.log("➡️ POST /ui/tap-coordinate | x=%.1f y=%.1f")
+                DriverLog.log("POST /ui/tap-coordinate: dispatching to main queue")
+                try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        ElementQuery.tapAtCoordinate(in: app, x: tapRequest.x, y: tapRequest.y)
+                    }
                 }
 
+                DriverLog.log("✅ POST /ui/tap-coordinate completed")
                 let response = TapCoordinateResponse(
                     success: true,
                     x: tapRequest.x,
@@ -486,6 +477,7 @@ final class HTTPServer: Sendable {
 
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ POST /ui/tap-coordinate failed: \(error.localizedDescription)")
                 return Response.error(
                     .internalServerError,
                     message: error.localizedDescription
@@ -495,6 +487,7 @@ final class HTTPServer: Sendable {
 
         router.post("/ui/type") { request in
             do {
+                let defaultTimeout = ConfigurationService.shared.getDefaultTimeout()
                 guard let typeRequest = try? request.decodeBody(TypeTextRequest.self) else {
                     return Response.error(
                         .badRequest,
@@ -509,21 +502,24 @@ final class HTTPServer: Sendable {
                     )
                 }
                 
-                let app = try await AppController.shared.getCurrentApp()
-                
-                let _ = try await self.ensureMainThread {
-                    try ElementQuery.typeText(
-                        typeRequest.text,
-                        in: app,
-                        identifier: typeRequest.identifier,
-                        label: typeRequest.label,
-                        predicate: typeRequest.predicate,
-                        timeout: typeRequest.timeout ?? ConfigurationService.shared.getDefaultTimeout(),
-                        waitStrategy: typeRequest.waitStrategy ?? .wait,
-                        clearFirst: typeRequest.clearFirst ?? false
-                    )
+                DriverLog.log("➡️ POST /ui/type | identifier=\(typeRequest.identifier ?? "-") label=\(typeRequest.label ?? "-") predicate=\(typeRequest.predicate ?? "-") textLength=\(typeRequest.text.count) clearFirst=\(typeRequest.clearFirst ?? false)")
+                DriverLog.log("POST /ui/type: dispatching to main queue")
+                try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        try ElementQuery.typeText(
+                            typeRequest.text,
+                            in: app,
+                            identifier: typeRequest.identifier,
+                            label: typeRequest.label,
+                            predicate: typeRequest.predicate,
+                            timeout: typeRequest.timeout ?? defaultTimeout,
+                            waitStrategy: typeRequest.waitStrategy ?? .wait,
+                            clearFirst: typeRequest.clearFirst ?? false
+                        )
+                    }
                 }
                 
+                DriverLog.log("✅ POST /ui/type completed")
                 let response = TypeTextResponse(
                     success: true,
                     text: typeRequest.text,
@@ -535,6 +531,7 @@ final class HTTPServer: Sendable {
                 
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ POST /ui/type failed: \(error.localizedDescription)")
                 return Response.error(
                     .conflict,
                     message: error.localizedDescription
@@ -546,6 +543,7 @@ final class HTTPServer: Sendable {
         
         router.post("/ui/swipe") { request in
             do {
+                let defaultTimeout = ConfigurationService.shared.getDefaultTimeout()
                 guard let swipeRequest = try? request.decodeBody(SwipeRequest.self) else {
                     return Response.error(
                         .badRequest,
@@ -560,21 +558,24 @@ final class HTTPServer: Sendable {
                     )
                 }
                 
-                let app = try await AppController.shared.getCurrentApp()
-                
-                let _ = try await self.ensureMainThread {
-                    try ElementQuery.swipe(
-                        in: app,
-                        direction: swipeRequest.direction,
-                        identifier: swipeRequest.identifier,
-                        label: swipeRequest.label,
-                        predicate: swipeRequest.predicate,
-                        velocity: swipeRequest.velocity ?? "fast",
-                        timeout: swipeRequest.timeout ?? ConfigurationService.shared.getDefaultTimeout(),
-                        waitStrategy: swipeRequest.waitStrategy ?? .wait
-                    )
+                DriverLog.log("➡️ POST /ui/swipe | direction=\(swipeRequest.direction) identifier=\(swipeRequest.identifier ?? "-") label=\(swipeRequest.label ?? "-")")
+                DriverLog.log("POST /ui/swipe: dispatching to main queue")
+                try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        try ElementQuery.swipe(
+                            in: app,
+                            direction: swipeRequest.direction,
+                            identifier: swipeRequest.identifier,
+                            label: swipeRequest.label,
+                            predicate: swipeRequest.predicate,
+                            velocity: swipeRequest.velocity ?? "fast",
+                            timeout: swipeRequest.timeout ?? defaultTimeout,
+                            waitStrategy: swipeRequest.waitStrategy ?? .wait
+                        )
+                    }
                 }
                 
+                DriverLog.log("✅ POST /ui/swipe completed")
                 let response = SwipeResponse(
                     success: true,
                     direction: swipeRequest.direction,
@@ -586,6 +587,7 @@ final class HTTPServer: Sendable {
                 
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ POST /ui/swipe failed: \(error.localizedDescription)")
                 return Response.error(
                     .conflict,
                     message: error.localizedDescription
@@ -597,6 +599,7 @@ final class HTTPServer: Sendable {
         
         router.post("/ui/scroll") { request in
             do {
+                let defaultTimeout = ConfigurationService.shared.getDefaultTimeout()
                 guard let scrollRequest = try? request.decodeBody(ScrollRequest.self) else {
                     return Response.error(
                         .badRequest,
@@ -611,20 +614,23 @@ final class HTTPServer: Sendable {
                     )
                 }
                 
-                let app = try await AppController.shared.getCurrentApp()
-                
-                let _ = try await self.ensureMainThread {
-                    try ElementQuery.scrollToElement(
-                        in: app,
-                        toElementIdentifier: scrollRequest.toElementIdentifier,
-                        toElementPredicate: scrollRequest.toElementPredicate,
-                        scrollContainerIdentifier: scrollRequest.scrollContainerIdentifier,
-                        scrollContainerPredicate: scrollRequest.scrollContainerPredicate,
-                        timeout: scrollRequest.timeout ?? (ConfigurationService.shared.getDefaultTimeout() * 2),
-                        waitStrategy: scrollRequest.waitStrategy ?? .wait
-                    )
+                DriverLog.log("➡️ POST /ui/scroll | toId=\(scrollRequest.toElementIdentifier ?? "-") toPredicate=\(scrollRequest.toElementPredicate ?? "-")")
+                DriverLog.log("POST /ui/scroll: dispatching to main queue")
+                try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        try ElementQuery.scrollToElement(
+                            in: app,
+                            toElementIdentifier: scrollRequest.toElementIdentifier,
+                            toElementPredicate: scrollRequest.toElementPredicate,
+                            scrollContainerIdentifier: scrollRequest.scrollContainerIdentifier,
+                            scrollContainerPredicate: scrollRequest.scrollContainerPredicate,
+                            timeout: scrollRequest.timeout ?? (defaultTimeout * 2),
+                            waitStrategy: scrollRequest.waitStrategy ?? .wait
+                        )
+                    }
                 }
                 
+                DriverLog.log("✅ POST /ui/scroll completed")
                 let response = ScrollResponse(
                     success: true,
                     toElementIdentifier: scrollRequest.toElementIdentifier,
@@ -634,6 +640,7 @@ final class HTTPServer: Sendable {
                 
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ POST /ui/scroll failed: \(error.localizedDescription)")
                 return Response.error(
                     .conflict,
                     message: error.localizedDescription
@@ -659,16 +666,19 @@ final class HTTPServer: Sendable {
                     )
                 }
                 
-                let app = try await AppController.shared.getCurrentApp()
-                
-                let _ = try await self.ensureMainThread {
-                    try ElementQuery.keyboardType(
-                        in: app,
-                        text: keyboardRequest.text,
-                        keys: keyboardRequest.keys
-                    )
+                DriverLog.log("➡️ POST /ui/keyboard/type | textLength=\(keyboardRequest.text?.count ?? 0) keysCount=\(keyboardRequest.keys?.count ?? 0)")
+                DriverLog.log("POST /ui/keyboard/type: dispatching to main queue")
+                try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        try ElementQuery.keyboardType(
+                            in: app,
+                            text: keyboardRequest.text,
+                            keys: keyboardRequest.keys
+                        )
+                    }
                 }
                 
+                DriverLog.log("✅ POST /ui/keyboard/type completed")
                 let response = KeyboardTypeResponse(
                     success: true,
                     text: keyboardRequest.text,
@@ -678,6 +688,7 @@ final class HTTPServer: Sendable {
                 
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ POST /ui/keyboard/type failed: \(error.localizedDescription)")
                 return Response.error(
                     .conflict,
                     message: error.localizedDescription
@@ -687,7 +698,9 @@ final class HTTPServer: Sendable {
         
         // GET /screenshot - Capture full screen
         router.get("/screenshot") { request in
-            let pngData = await ScreenshotService.captureFullScreen()
+            DriverLog.log("➡️ GET /screenshot")
+            DriverLog.log("GET /screenshot: dispatching to main queue")
+            let pngData = DispatchQueue.main.sync { ScreenshotService.captureFullScreen() }
             let base64 = ScreenshotService.pngToBase64(pngData)
             
             // Get screen dimensions from the screenshot
@@ -706,11 +719,13 @@ final class HTTPServer: Sendable {
                 timestamp: ISO8601DateFormatter().string(from: Date())
             )
                 
+            DriverLog.log("✅ GET /screenshot completed")
             return Response(statusCode: .ok, body: response)
         }
         
         // POST /screenshot/element - Capture element screenshot
         router.post("/screenshot/element") { request in
+            DriverLog.log("➡️ POST /screenshot/element")
             guard let screenshotRequest = try? request.decodeBody(ElementScreenshotRequest.self) else {
                 return Response.error(
                     .badRequest,
@@ -719,18 +734,23 @@ final class HTTPServer: Sendable {
             }
             
             do {
-                let app = try await AppController.shared.getCurrentApp()
-                let timeout = screenshotRequest.timeout ?? ConfigurationService.shared.getDefaultTimeout()
+                let defaultTimeout = ConfigurationService.shared.getDefaultTimeout()
+                let timeout = screenshotRequest.timeout ?? defaultTimeout
                 let waitStrategy = screenshotRequest.waitStrategy ?? .wait
                 
-                let (pngData, node) = try await ScreenshotService.captureElement(
-                    in: app,
-                    identifier: screenshotRequest.identifier,
-                    label: screenshotRequest.label,
-                    predicate: screenshotRequest.predicate,
-                    timeout: timeout,
-                    waitStrategy: waitStrategy
-                )
+                DriverLog.log("POST /screenshot/element: dispatching to main queue")
+                let (pngData, node) = try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        try ScreenshotService.captureElement(
+                            in: app,
+                            identifier: screenshotRequest.identifier,
+                            label: screenshotRequest.label,
+                            predicate: screenshotRequest.predicate,
+                            timeout: timeout,
+                            waitStrategy: waitStrategy
+                        )
+                    }
+                }
                 
                 let base64 = ScreenshotService.pngToBase64(pngData)
                 
@@ -740,8 +760,10 @@ final class HTTPServer: Sendable {
                     timestamp: ISO8601DateFormatter().string(from: Date())
                 )
                 
+                DriverLog.log("✅ POST /screenshot/element completed")
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ POST /screenshot/element failed: \(error.localizedDescription)")
                 return Response.error(
                     .notFound,
                     message: error.localizedDescription
@@ -752,9 +774,13 @@ final class HTTPServer: Sendable {
         // GET /ocr - Capture full screen and run OCR
         router.get("/ocr") { _ in
             do {
-                let document = try await OcrService.recognize()
+                DriverLog.log("➡️ GET /ocr")
+                DriverLog.log("GET /ocr: dispatching to main queue")
+                let document = try DispatchQueue.main.sync { try OcrService.recognize() }
+                DriverLog.log("✅ GET /ocr completed")
                 return Response(statusCode: .ok, body: document)
             } catch {
+                DriverLog.log("❌ GET /ocr failed: \(error.localizedDescription)")
                 return Response.error(
                     .internalServerError,
                     message: error.localizedDescription
@@ -764,6 +790,7 @@ final class HTTPServer: Sendable {
         
         // POST /screenshot/compare - Compare screenshots
         router.post("/screenshot/compare") { request in
+            DriverLog.log("➡️ POST /screenshot/compare")
             guard let compareRequest = try? request.decodeBody(CompareScreenshotRequest.self) else {
                 return Response.error(
                     .badRequest,
@@ -772,7 +799,8 @@ final class HTTPServer: Sendable {
             }
             
             do {
-                let currentPngData = await ScreenshotService.captureFullScreen()
+                DriverLog.log("POST /screenshot/compare: dispatching to main queue")
+                let currentPngData = DispatchQueue.main.sync { ScreenshotService.captureFullScreen() }
                 let threshold = compareRequest.threshold ?? 0.95
                 
                 let result = try ScreenshotService.compareScreenshots(
@@ -790,8 +818,10 @@ final class HTTPServer: Sendable {
                     timestamp: ISO8601DateFormatter().string(from: Date())
                 )
                 
+                DriverLog.log("✅ POST /screenshot/compare completed")
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ POST /screenshot/compare failed: \(error.localizedDescription)")
                 return Response.error(
                     .badRequest,
                     message: error.localizedDescription
@@ -801,6 +831,7 @@ final class HTTPServer: Sendable {
         
         // POST /ui/validate - Soft validation
         router.post("/ui/validate") { request in
+            DriverLog.log("➡️ POST /ui/validate")
             guard let validateRequest = try? request.decodeBody(ValidateRequest.self) else {
                 return Response.error(
                     .badRequest,
@@ -809,12 +840,15 @@ final class HTTPServer: Sendable {
             }
             
             do {
-                let app = try await AppController.shared.getCurrentApp()
-                
-                let results = await ValidationService.validate(
-                    in: app,
-                    validations: validateRequest.validations
-                )
+                DriverLog.log("POST /ui/validate: dispatching to main queue")
+                let results = try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        ValidationService.validate(
+                            in: app,
+                            validations: validateRequest.validations
+                        )
+                    }
+                }
                 
                 let passedCount = results.filter { $0.passed }.count
                 let failedCount = results.count - passedCount
@@ -827,8 +861,10 @@ final class HTTPServer: Sendable {
                     timestamp: ISO8601DateFormatter().string(from: Date())
                 )
                 
+                DriverLog.log("✅ POST /ui/validate completed | passed=\(passedCount) failed=\(failedCount)")
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ POST /ui/validate failed: \(error.localizedDescription)")
                 return Response.error(
                     .conflict,
                     message: error.localizedDescription
@@ -838,6 +874,7 @@ final class HTTPServer: Sendable {
         
         // POST /ui/assert - Hard assertion
         router.post("/ui/assert") { request in
+            DriverLog.log("➡️ POST /ui/assert")
             guard let assertRequest = try? request.decodeBody(AssertRequest.self) else {
                 return Response.error(
                     .badRequest,
@@ -854,7 +891,7 @@ final class HTTPServer: Sendable {
             }
             
             do {
-                let app = try await AppController.shared.getCurrentApp()
+                let defaultTimeout = ConfigurationService.shared.getDefaultTimeout()
                 
                 let rule = ValidationRule(
                     identifier: assertRequest.identifier,
@@ -862,10 +899,17 @@ final class HTTPServer: Sendable {
                     predicate: assertRequest.predicate,
                     property: assertRequest.property,
                     expectedValue: assertRequest.expectedValue,
-                    timeout: assertRequest.timeout ?? ConfigurationService.shared.getDefaultTimeout()
+                    timeout: assertRequest.timeout ?? defaultTimeout
                 )
                 
-                try await ValidationService.assert(in: app, assertion: rule)
+                DriverLog.log("POST /ui/assert: dispatching to main queue | property=\(assertRequest.property)")
+                try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        try ValidationService.assert(in: app, assertion: rule)
+                    }
+                }
+                
+                DriverLog.log("✅ POST /ui/assert completed")
                 
                 let response = AssertResponse(
                     success: true,
@@ -877,6 +921,7 @@ final class HTTPServer: Sendable {
                 
                 return Response(statusCode: .ok, body: response)
             } catch let error as ValidationError {
+                DriverLog.log("❌ POST /ui/assert failed (validation): \(error.localizedDescription)")
                 // Return 400 for assertion failures
                 if case .assertionFailed(let result) = error {
                     return Response.error(
@@ -890,6 +935,7 @@ final class HTTPServer: Sendable {
                     message: error.localizedDescription
                 )
             } catch {
+                DriverLog.log("❌ POST /ui/assert failed: \(error.localizedDescription)")
                 return Response.error(
                     .conflict,
                     message: error.localizedDescription
@@ -899,6 +945,7 @@ final class HTTPServer: Sendable {
         
         // POST /ui/wait - Explicit wait for condition
         router.post("/ui/wait") { request in
+            DriverLog.log("➡️ POST /ui/wait")
             guard let waitRequest = try? request.decodeBody(WaitRequest.self) else {
                 return Response.error(
                     .badRequest,
@@ -906,25 +953,25 @@ final class HTTPServer: Sendable {
                 )
             }
             
+            let defaultTimeout = ConfigurationService.shared.getDefaultTimeout()
+            
+            // Parse wait condition
+            guard let condition = WaitService.WaitCondition(rawValue: waitRequest.condition) else {
+                return Response.error(
+                    .badRequest,
+                    message: "Invalid wait condition '\(waitRequest.condition)'",
+                    details: "Valid conditions: exists, notExists, isEnabled, isDisabled, isHittable, isNotHittable, hasFocus, isSelected, isNotSelected, labelContains, labelEquals, valueContains, valueEquals"
+                )
+            }
+            
+            let timeout = waitRequest.timeout ?? defaultTimeout
+            
+            // Bridge HTTP to sync XCTest operation
             do {
-                let app = try await AppController.shared.getCurrentApp()
-                
-                // Parse wait condition
-                guard let condition = WaitService.WaitCondition(rawValue: waitRequest.condition) else {
-                    return Response.error(
-                        .badRequest,
-                        message: "Invalid wait condition '\(waitRequest.condition)'",
-                        details: "Valid conditions: exists, notExists, isEnabled, isDisabled, isHittable, isNotHittable, hasFocus, isSelected, isNotSelected, labelContains, labelEquals, valueContains, valueEquals"
-                    )
-                }
-                
-                let timeout = waitRequest.timeout ?? ConfigurationService.shared.getDefaultTimeout()
-                
-                // Bridge async HTTP to sync XCTest operation
-                return await MainActor.run {
-                    do {
-                        // Call synchronous wait (no await!)
-                        let result = try WaitService.wait(
+                DriverLog.log("POST /ui/wait: condition=\(waitRequest.condition) timeout=\(waitRequest.timeout) | dispatching to main queue")
+                let result = try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        try WaitService.wait(
                             in: app,
                             condition: condition,
                             identifier: waitRequest.identifier,
@@ -934,33 +981,31 @@ final class HTTPServer: Sendable {
                             timeout: timeout,
                             softValidation: false
                         )
-                        
-                        let response = WaitResponse(
-                            conditionMet: result.success,
-                            condition: waitRequest.condition,
-                            element: result.element,
-                            waitedTime: result.actualTime,
-                            timestamp: ISO8601DateFormatter().string(from: Date())
-                        )
-                        
-                        return Response(statusCode: .ok, body: response)
-                    } catch let error as WaitService.WaitError {
-                        return Response.error(
-                            .requestTimeout,
-                            message: error.localizedDescription,
-                            details: "Condition '\(waitRequest.condition)' was not met within timeout"
-                        )
-                    } catch {
-                        return Response.error(
-                            .conflict,
-                            message: error.localizedDescription
-                        )
                     }
                 }
-            } catch {
+                
+                let response = WaitResponse(
+                    conditionMet: result.success,
+                    condition: waitRequest.condition,
+                    element: result.element,
+                    waitedTime: result.actualTime,
+                    timestamp: ISO8601DateFormatter().string(from: Date())
+                )
+                
+                DriverLog.log("✅ POST /ui/wait completed | conditionMet=\(result.success ? 1 : 0)")
+                return Response(statusCode: .ok, body: response)
+            } catch let error as WaitService.WaitError {
+                DriverLog.log("❌ POST /ui/wait timeout: \(error.localizedDescription)")
                 return Response.error(
-                    .badRequest,
-                    message: "Failed to get app: \(error.localizedDescription)"
+                    .requestTimeout,
+                    message: error.localizedDescription,
+                    details: "Condition '\(waitRequest.condition)' was not met within timeout"
+                )
+            } catch {
+                DriverLog.log("❌ POST /ui/wait failed: \(error.localizedDescription)")
+                return Response.error(
+                    .conflict,
+                    message: error.localizedDescription
                 )
             }
         }
@@ -970,9 +1015,13 @@ final class HTTPServer: Sendable {
         // GET /ui/alerts - List active alerts
         router.get("/ui/alerts") { request in
             do {
-                let app = try await AppController.shared.getCurrentApp()
-                
-                let alerts = await AlertService.detectAlerts(in: app)
+                DriverLog.log("➡️ GET /ui/alerts")
+                DriverLog.log("GET /ui/alerts: dispatching to main queue")
+                let alerts = try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        AlertService.detectAlerts(in: app)
+                    }
+                }
                 
                 let response = AlertsResponse(
                     alerts: alerts,
@@ -980,8 +1029,10 @@ final class HTTPServer: Sendable {
                     timestamp: ISO8601DateFormatter().string(from: Date())
                 )
                 
+                DriverLog.log("✅ GET /ui/alerts completed | count=\(alerts.count)")
                 return Response(statusCode: .ok, body: response)
             } catch {
+                DriverLog.log("❌ GET /ui/alerts failed: \(error.localizedDescription)")
                 return Response.error(
                     .conflict,
                     message: error.localizedDescription
@@ -992,6 +1043,8 @@ final class HTTPServer: Sendable {
         // POST /ui/alert/dismiss - Dismiss alert by button label
         router.post("/ui/alert/dismiss") { request in
             do {
+                DriverLog.log("➡️ POST /ui/alert/dismiss")
+                let defaultTimeout = ConfigurationService.shared.getDefaultTimeout()
                 guard let body = request.body,
                       let dismissRequest = try? JSONDecoder().decode(DismissAlertRequest.self, from: body) else {
                     return Response.error(
@@ -1001,27 +1054,33 @@ final class HTTPServer: Sendable {
                     )
                 }
                 
-                let app = try await AppController.shared.getCurrentApp()
-                
-                let dismissed = try await AlertService.dismissAlert(
-                    in: app,
-                    buttonLabel: dismissRequest.buttonLabel,
-                    timeout: dismissRequest.timeout ?? ConfigurationService.shared.getDefaultTimeout()
-                )
+                DriverLog.log("POST /ui/alert/dismiss: buttonLabel=\(dismissRequest.buttonLabel) | dispatching to main queue")
+                let dismissed = try DispatchQueue.main.sync {
+                    try AppController.shared.withCurrentApp { app in
+                        try AlertService.dismissAlert(
+                            in: app,
+                            buttonLabel: dismissRequest.buttonLabel,
+                            timeout: dismissRequest.timeout ?? defaultTimeout
+                        )
+                    }
+                }
                 
                 let response = DismissAlertResponse(
                     dismissed: dismissed,
                     timestamp: ISO8601DateFormatter().string(from: Date())
                 )
                 
+                DriverLog.log("✅ POST /ui/alert/dismiss completed")
                 return Response(statusCode: .ok, body: response)
             } catch let error as AlertError {
+                DriverLog.log("❌ POST /ui/alert/dismiss failed: \(error.localizedDescription)")
                 return Response.error(
                     .notFound,
                     message: error.localizedDescription,
                     suggestion: error.recoverySuggestion
                 )
             } catch {
+                DriverLog.log("❌ POST /ui/alert/dismiss failed: \(error.localizedDescription)")
                 return Response.error(
                     .conflict,
                     message: error.localizedDescription
@@ -1034,14 +1093,11 @@ final class HTTPServer: Sendable {
 // MARK: - Errors
 
 enum HTTPServerError: Error, LocalizedError {
-    case failedToCreateListener
     case alreadyRunning
     case notRunning
     
     var errorDescription: String? {
         switch self {
-        case .failedToCreateListener:
-            return "Failed to create network listener"
         case .alreadyRunning:
             return "Server is already running"
         case .notRunning:

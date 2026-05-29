@@ -1,9 +1,9 @@
 import Foundation
 import XCTest
 
-/// Manages XCUIApplication lifecycle and state
-@MainActor
-final class AppController: Sendable {
+/// Manages XCUIApplication lifecycle and state.
+/// All methods must be called from the main thread (XCTest requirement).
+final class AppController {
     
     private var currentApp: XCUIApplication?
     private var currentBundleId: String?
@@ -23,35 +23,44 @@ final class AppController: Sendable {
     /// - Returns: The PID of the launched app
     /// - Throws: If app cannot be launched
     func launch(bundleId: String, arguments: [String] = [], environment: [String: String] = [:]) throws -> Int {
+        DriverLog.log("AppController.launch: bundleId=\(bundleId)")
+
         // Terminate existing app if running
         if let existing = currentApp, existing.state != .notRunning {
+            DriverLog.log("AppController.launch: terminating existing app (state=\(existing.state.rawValue))")
             existing.terminate()
         }
         
         // Create and configure new app instance
+        DriverLog.log("AppController.launch: creating XCUIApplication for \(bundleId)")
         let app = XCUIApplication(bundleIdentifier: bundleId)
         app.launchArguments = arguments
         app.launchEnvironment = environment
         
         // Launch the app
+        DriverLog.log("AppController.launch: calling app.launch()")
         app.launch()
         
         // Wait briefly for launch to complete
+        DriverLog.log("AppController.launch: waiting for runningForeground (timeout: 5s)")
         guard app.wait(for: .runningForeground, timeout: 5) else {
+            DriverLog.log("AppController.launch: ❌ timeout waiting for runningForeground")
             throw AppError.launchTimeout(bundleId: bundleId)
         }
         
         currentApp = app
         currentBundleId = bundleId
         
-        // Note: XCUIApplication doesn't expose PID directly, return 0 as placeholder
+        DriverLog.log("AppController.launch: ✅ success, bundleId=\(bundleId) state=\(app.state.rawValue)")
         return 0
     }
     
     /// Terminates the currently running application
     /// - Throws: If no app is running
     func terminate() throws {
+        DriverLog.log("AppController.terminate: bundleId=\(currentBundleId ?? "nil")")
         guard let app = currentApp else {
+            DriverLog.log("AppController.terminate: no app running")
             throw AppError.noAppRunning
         }
         
@@ -95,26 +104,33 @@ final class AppController: Sendable {
     /// Activates the application (brings to foreground)
     /// - Throws: If no app is running
     func activate() throws {
+        DriverLog.log("AppController.activate")
         guard let app = currentApp else {
+            DriverLog.log("AppController.activate: no app running")
             throw AppError.noAppRunning
         }
         
         app.activate()
         
         // Wait for foreground state
-        _ = app.wait(for: .runningForeground, timeout: 3)
+        let result = app.wait(for: .runningForeground, timeout: 3)
+        DriverLog.log("AppController.activate: waitForForeground=\(result ? 1 : 0)")
     }
     
     // MARK: - App Access
     
-    /// Gets the current XCUIApplication instance
-    /// - Returns: The current app instance
-    /// - Throws: If no app is running
-    func getCurrentApp() throws -> XCUIApplication {
+    /// Executes an operation with the current app.
+    /// - Parameter body: Operation that receives the current app.
+    /// - Throws: AppError.noAppRunning if there is no current app, or any error from body.
+    func withCurrentApp<T>(
+        _ body: (XCUIApplication) throws -> T
+    ) throws -> T {
+        DriverLog.log("AppController.withCurrentApp")
         guard let app = currentApp else {
+            DriverLog.log("AppController.withCurrentApp: no app running")
             throw AppError.noAppRunning
         }
-        return app
+        return try body(app)
     }
 }
 

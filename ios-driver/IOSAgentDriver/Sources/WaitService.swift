@@ -1,11 +1,11 @@
 import XCTest
 import Foundation
 
-/// Service for explicit wait operations using XCTest native mechanisms
-/// This service uses XCUIElement.waitForExistence() and XCTNSPredicateExpectation
-/// for optimal performance and stability, following Apple's guidelines for XCUITest
-@MainActor
+/// Service for explicit wait operations using safe query polling.
+/// This avoids XCTest lookup/wait paths that can emit hard test failures
+/// when queries have zero matches.
 final class WaitService {
+    private static let pollingInterval: TimeInterval = 0.1
     
     /// Result of a wait operation
     struct WaitResult: Codable {
@@ -67,7 +67,7 @@ final class WaitService {
         }
     }
     
-    /// Wait for a specific condition using XCTest native mechanisms
+    /// Wait for a specific condition using safe polling
     /// - Parameters:
     ///   - app: The XCUIApplication instance
     ///   - condition: The wait condition to check
@@ -91,6 +91,7 @@ final class WaitService {
     ) throws -> WaitResult {
         
         let startTime = Date()
+        DriverLog.log("WaitService.wait: condition=\(condition.rawValue) timeout=\(timeout)s identifier=\(identifier ?? "-") label=\(label ?? "-") predicate=\(predicate ?? "-")")
         
         do {
             // Validate identifier usage
@@ -99,17 +100,16 @@ final class WaitService {
                 throw WaitError.multipleIdentifiers
             }
             
-            // Find the element
-            let element = try findElement(
+            // Build query once and evaluate condition through safe polling.
+            let query = try buildQuery(
                 in: app,
                 identifier: identifier,
                 label: label,
                 predicate: predicate
             )
             
-            // Wait for condition using XCTest native mechanisms
-            try waitForCondition(
-                element: element,
+            let element = try waitForCondition(
+                query: query,
                 condition: condition,
                 value: value,
                 timeout: timeout
@@ -117,7 +117,8 @@ final class WaitService {
             
             // Success!
             let actualTime = Date().timeIntervalSince(startTime)
-            let node = serialize(element)
+            DriverLog.log("WaitService.wait: success in %.2fs")
+            let node = element.map(serialize)
             
             return WaitResult(
                 success: true,
@@ -130,10 +131,11 @@ final class WaitService {
             
         } catch let error as WaitError {
             let actualTime = Date().timeIntervalSince(startTime)
+            DriverLog.log("WaitService.wait: failed after %.2fs: \(actualTime)")
             
             if softValidation {
                 // Soft validation: Log warning but don't throw
-                print("⚠️ Wait failed (soft validation): \(error.localizedDescription)")
+                DriverLog.log("⚠️ Wait failed (soft validation): \(error.localizedDescription)")
                 
                 return WaitResult(
                     success: false,
@@ -150,136 +152,140 @@ final class WaitService {
         }
     }
     
-    /// Wait for condition using appropriate XCTest mechanism
+    /// Wait for condition by polling safe query enumeration.
     private static func waitForCondition(
-        element: XCUIElement,
+        query: XCUIElementQuery,
         condition: WaitCondition,
         value: String?,
         timeout: TimeInterval
-    ) throws {
+    ) throws -> XCUIElement? {
+        let deadline = Date().addingTimeInterval(max(timeout, 0))
         
-        switch condition {
-        
-        // MARK: - Simple Existence Checks
-        
-        case .exists:
-            // Use XCUIElement.waitForExistence (fastest, most reliable)
-            guard element.waitForExistence(timeout: timeout) else {
-                throw WaitError.conditionNotMet(condition: "exists", timeout: timeout)
-            }
-        
-        case .notExists:
-            // Wait for element to disappear
-            let predicate = NSPredicate(format: "exists == false")
-            try waitWithPredicate(element: element, predicate: predicate, timeout: timeout, condition: "notExists")
-        
-        // MARK: - State Checks (use XCTNSPredicateExpectation)
-        
-        case .isEnabled:
-            let predicate = NSPredicate(format: "isEnabled == true")
-            try waitWithPredicate(element: element, predicate: predicate, timeout: timeout, condition: "isEnabled")
-        
-        case .isDisabled:
-            let predicate = NSPredicate(format: "isEnabled == false")
-            try waitWithPredicate(element: element, predicate: predicate, timeout: timeout, condition: "isDisabled")
-        
-        case .isHittable:
-            let predicate = NSPredicate(format: "isHittable == true")
-            try waitWithPredicate(element: element, predicate: predicate, timeout: timeout, condition: "isHittable")
-        
-        case .isNotHittable:
-            let predicate = NSPredicate(format: "isHittable == false")
-            try waitWithPredicate(element: element, predicate: predicate, timeout: timeout, condition: "isNotHittable")
-        
-        case .hasFocus:
-            let predicate = NSPredicate(format: "hasFocus == true")
-            try waitWithPredicate(element: element, predicate: predicate, timeout: timeout, condition: "hasFocus")
-        
-        case .isSelected:
-            let predicate = NSPredicate(format: "isSelected == true")
-            try waitWithPredicate(element: element, predicate: predicate, timeout: timeout, condition: "isSelected")
-        
-        case .isNotSelected:
-            let predicate = NSPredicate(format: "isSelected == false")
-            try waitWithPredicate(element: element, predicate: predicate, timeout: timeout, condition: "isNotSelected")
-        
-        // MARK: - Text/Value Checks (use XCTNSPredicateExpectation)
-        
-        case .labelContains:
-            guard let expectedValue = value else {
-                throw WaitError.invalidCondition(condition: "labelContains", reason: "value parameter required")
-            }
-            let predicate = NSPredicate(format: "label CONTAINS[cd] %@", expectedValue)
-            try waitWithPredicate(element: element, predicate: predicate, timeout: timeout, condition: "labelContains")
-        
-        case .labelEquals:
-            guard let expectedValue = value else {
-                throw WaitError.invalidCondition(condition: "labelEquals", reason: "value parameter required")
-            }
-            let predicate = NSPredicate(format: "label == %@", expectedValue)
-            try waitWithPredicate(element: element, predicate: predicate, timeout: timeout, condition: "labelEquals")
-        
-        case .valueContains:
-            guard let expectedValue = value else {
-                throw WaitError.invalidCondition(condition: "valueContains", reason: "value parameter required")
-            }
-            let predicate = NSPredicate(format: "value CONTAINS[cd] %@", expectedValue)
-            try waitWithPredicate(element: element, predicate: predicate, timeout: timeout, condition: "valueContains")
-        
-        case .valueEquals:
-            guard let expectedValue = value else {
-                throw WaitError.invalidCondition(condition: "valueEquals", reason: "value parameter required")
-            }
-            let predicate = NSPredicate(format: "value == %@", expectedValue)
-            try waitWithPredicate(element: element, predicate: predicate, timeout: timeout, condition: "valueEquals")
-        }
-    }
-    
-    /// Wait using XCTNSPredicateExpectation (XCTest native)
-    private static func waitWithPredicate(
-        element: XCUIElement,
-        predicate: NSPredicate,
-        timeout: TimeInterval,
-        condition: String
-    ) throws {
-        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
-        
-        let result = XCTWaiter().wait(for: [expectation], timeout: timeout)
-        
-        guard result == .completed else {
-            throw WaitError.conditionNotMet(
+        while true {
+            let elements = query.safeAllElementsBoundByIndex()
+            let firstElement = elements.first
+            
+            if try conditionMet(
                 condition: condition,
-                timeout: timeout
-            )
+                element: firstElement,
+                value: value
+            ) {
+                return firstElement
+            }
+            
+            if Date() >= deadline {
+                throw WaitError.conditionNotMet(
+                    condition: condition.rawValue,
+                    timeout: timeout
+                )
+            }
+            
+            let sleepTime = min(Self.pollingInterval, deadline.timeIntervalSinceNow)
+            if sleepTime > 0 {
+                sleepForPolling(sleepTime)
+            }
         }
     }
     
-    /// Find element by identifier, label, or predicate
-    private static func findElement(
+    private static func sleepForPolling(_ seconds: TimeInterval) {
+        let clampedSeconds = max(0, seconds)
+        guard clampedSeconds > 0 else { return }
+        RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: clampedSeconds))
+    }
+    
+    /// Build element query by identifier, label, or predicate.
+    private static func buildQuery(
         in app: XCUIApplication,
         identifier: String? = nil,
         label: String? = nil,
         predicate: String? = nil
-    ) throws -> XCUIElement {
+    ) throws -> XCUIElementQuery {
         
         if let identifier = identifier {
             // Find by accessibility identifier
-            return app.descendants(matching: .any).safeMatching(identifier: identifier).firstMatch
+            return app.descendants(matching: .any).safeMatching(identifier: identifier)
         }
         
         if let label = label {
             // Find by accessibility label
             let nsPredicate = NSPredicate(format: "label == %@", label)
-            return app.descendants(matching: .any).matching(nsPredicate).firstMatch
+            return app.descendants(matching: .any).safeMatching(predicate: nsPredicate)
         }
         
         if let predicateString = predicate {
             // Find by custom predicate
             let nsPredicate = NSPredicate(format: predicateString)
-            return app.descendants(matching: .any).matching(nsPredicate).firstMatch
+            var caughtException: NSException?
+            guard let query = app.descendants(matching: .any)
+                .safeMatching(nsPredicate, exception: &caughtException) else {
+                let reason = caughtException?.reason ?? predicateString
+                throw WaitError.invalidCondition(condition: "predicate", reason: reason)
+            }
+            return query
         }
         
         throw WaitError.invalidCondition(condition: "find", reason: "No identifier, label, or predicate provided")
+    }
+    
+    /// Evaluates whether the current element snapshot satisfies the wait condition.
+    private static func conditionMet(
+        condition: WaitCondition,
+        element: XCUIElement?,
+        value: String?
+    ) throws -> Bool {
+        switch condition {
+        case .exists:
+            return element != nil
+        case .notExists:
+            return element == nil
+        case .isEnabled:
+            guard let element = element else { return false }
+            return element.isEnabled
+        case .isDisabled:
+            guard let element = element else { return false }
+            return !element.isEnabled
+        case .isHittable:
+            guard let element = element else { return false }
+            return element.safeIsHittable()
+        case .isNotHittable:
+            guard let element = element else { return false }
+            return !element.safeIsHittable()
+        case .hasFocus:
+            guard let element = element else { return false }
+            return element.hasFocus
+        case .isSelected:
+            guard let element = element else { return false }
+            return element.isSelected
+        case .isNotSelected:
+            guard let element = element else { return false }
+            return !element.isSelected
+        case .labelContains:
+            guard let expected = value else {
+                throw WaitError.invalidCondition(condition: "labelContains", reason: "value parameter required")
+            }
+            guard let element = element else { return false }
+            return element.label.localizedCaseInsensitiveContains(expected)
+        case .labelEquals:
+            guard let expected = value else {
+                throw WaitError.invalidCondition(condition: "labelEquals", reason: "value parameter required")
+            }
+            guard let element = element else { return false }
+            return element.label == expected
+        case .valueContains:
+            guard let expected = value else {
+                throw WaitError.invalidCondition(condition: "valueContains", reason: "value parameter required")
+            }
+            guard let element = element else { return false }
+            let currentValue = String(describing: element.value ?? "")
+            return currentValue.localizedCaseInsensitiveContains(expected)
+        case .valueEquals:
+            guard let expected = value else {
+                throw WaitError.invalidCondition(condition: "valueEquals", reason: "value parameter required")
+            }
+            guard let element = element else { return false }
+            let currentValue = String(describing: element.value ?? "")
+            return currentValue == expected
+        }
     }
     
     /// Serialize XCUIElement to UINode

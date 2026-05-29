@@ -4,4 +4,11 @@
    <FileRef
       location = "group:IOSAgentDriver.xcodeproj">
    </FileRef>
+   <Group
+      location = "container:"
+      name = "Dependencies">
+      <FileRef
+         location = "group:Tuist/.build/tuist-derived/Swifter/Swifter.xcodeproj">
+      </FileRef>
+   </Group>
 </Workspace>

@@ -18,7 +18,7 @@ extension JSONEncoder {
 }
 
 /// Wrapper to encode CGRect as flat object instead of nested arrays
-struct FrameWrapper: Codable {
+struct FrameWrapper: Codable, Sendable {
     let x: CGFloat
     let y: CGFloat
     let width: CGFloat

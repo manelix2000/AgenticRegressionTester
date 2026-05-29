@@ -49,6 +49,13 @@ NS_ASSUME_NONNULL_BEGIN
 /// - Returns: A filtered query, or an empty query if an exception occurred.
 - (XCUIElementQuery *)safeMatchingIdentifier:(NSString *)identifier NS_SWIFT_NAME(safeMatching(identifier:));
 
+/// Safely filters this query by NSPredicate, catching any
+/// NSInternalInconsistencyException thrown by XCTest's predicate engine.
+/// Falls back to returning an empty query on failure.
+/// - Parameter predicate: The NSPredicate to evaluate.
+/// - Returns: A filtered query, or an empty query if an exception occurred.
+- (XCUIElementQuery *)safeMatchingPredicate:(NSPredicate *)predicate NS_SWIFT_NAME(safeMatching(predicate:));
+
 @end
 
 /// An XCUIElement category that wraps screenshot() in an ObjC @try/@catch block.
@@ -61,6 +68,18 @@ NS_ASSUME_NONNULL_BEGIN
 /// NSInternalInconsistencyException thrown when the element has no window.
 /// - Returns: A screenshot, or nil if an exception occurred.
 - (nullable XCUIScreenshot *)safeScreenshot NS_SWIFT_NAME(safeScreenshot());
+
+@end
+
+/// Safely creates an NSPredicate from a format string, catching any NSException
+/// thrown when the format string is malformed.
+@interface NSPredicate (SafeCreation)
+
+/// Creates an NSPredicate from the given format string, returning nil if the
+/// format is invalid instead of throwing an ObjC exception.
+/// - Parameter format: The predicate format string.
+/// - Returns: A valid NSPredicate, or nil if creation failed.
++ (nullable NSPredicate *)safePredicateWithFormat:(NSString *)format NS_SWIFT_NAME(safePredicate(format:));
 
 @end
 

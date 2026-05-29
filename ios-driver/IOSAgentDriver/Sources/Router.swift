@@ -1,38 +1,38 @@
 import Foundation
 
 /// Request handler type
-typealias RouteHandler = @Sendable (HTTPRequest) async -> Response
+typealias RouteHandler = @Sendable (HTTPRequest) -> Response
 
 /// Routes HTTP requests to handlers
-@MainActor
-final class Router: Sendable {
+struct Router: Sendable {
     
     private var routes: [Route] = []
     
     /// Register a GET route
-    func get(_ path: String, handler: @escaping RouteHandler) {
+    mutating func get(_ path: String, handler: @escaping RouteHandler) {
         routes.append(Route(method: .GET, path: path, handler: handler))
     }
     
     /// Register a POST route
-    func post(_ path: String, handler: @escaping RouteHandler) {
+    mutating func post(_ path: String, handler: @escaping RouteHandler) {
         routes.append(Route(method: .POST, path: path, handler: handler))
     }
     
     /// Register a PUT route
-    func put(_ path: String, handler: @escaping RouteHandler) {
+    mutating func put(_ path: String, handler: @escaping RouteHandler) {
         routes.append(Route(method: .PUT, path: path, handler: handler))
     }
     
     /// Register a DELETE route
-    func delete(_ path: String, handler: @escaping RouteHandler) {
+    mutating func delete(_ path: String, handler: @escaping RouteHandler) {
         routes.append(Route(method: .DELETE, path: path, handler: handler))
     }
     
     /// Handle incoming request
-    func handle(_ request: HTTPRequest) async -> Response {
+    func handle(_ request: HTTPRequest) -> Response {
         // Handle OPTIONS preflight requests for CORS
         if request.method == .OPTIONS {
+            DriverLog.log("OPTIONS \(request.path)")
             return Response(
                 statusCode: .noContent,
                 headers: [:]  // CORS headers will be added automatically in toData()
@@ -53,11 +53,12 @@ final class Router: Sendable {
                     pathParams: pathParams
                 )
                 
-                return await route.handler(requestWithParams)
+                return route.handler(requestWithParams)
             }
         }
         
         // No matching route found
+        DriverLog.log("⚠️ No route matched: \(request.method.rawValue) \(request.path)")
         return Response.error(
             .notFound,
             message: "Endpoint not found: \(request.method.rawValue) \(request.path)",

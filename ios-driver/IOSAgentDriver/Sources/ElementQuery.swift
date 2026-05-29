@@ -2,8 +2,94 @@ import Foundation
 import XCTest
 
 /// Handles element querying and UI tree operations
-/// Note: Methods are synchronous (XCTest APIs are synchronous)
-final class ElementQuery: Sendable {
+/// Note: Methods touching XCTest use synchronous polling.
+final class ElementQuery {
+    private static let pollingInterval: TimeInterval = 0.1
+    
+    /// Builds a safe XCUI query from criteria.
+
+    private static func buildQuery(
+        in root: XCUIElement,
+        identifier: String? = nil,
+        label: String? = nil,
+        predicate: String? = nil
+    ) throws -> XCUIElementQuery {
+        if let identifier = identifier {
+            DriverLog.log("buildQuery: by identifier=\(identifier)")
+            return root.descendants(matching: .any).safeMatching(identifier: identifier)
+        }
+        
+        if let labelText = label {
+            DriverLog.log("buildQuery: by label=\(labelText)")
+            let labelPredicate = NSPredicate(format: "label == %@", labelText)
+            return root.descendants(matching: .any).safeMatching(predicate: labelPredicate)
+        }
+        
+        if let predicateString = predicate {
+            DriverLog.log("buildQuery: by predicate=\(predicateString)")
+            guard let nsPredicate = NSPredicate.safePredicate(format: predicateString) else {
+                throw QueryError.invalidPredicate(predicateString)
+            }
+            var caughtException: NSException?
+            guard let safeQuery = root.descendants(matching: .any)
+                .safeMatching(nsPredicate, exception: &caughtException) else {
+                let reason = caughtException?.reason ?? predicateString
+                throw QueryError.invalidPredicate(reason)
+            }
+            return safeQuery
+        }
+        
+        throw QueryError.missingCriteria
+    }
+    
+    /// Returns matched elements using safe enumeration and optional polling.
+
+    private static func resolveElements(
+        from query: XCUIElementQuery,
+        timeout: TimeInterval,
+        waitStrategy: FindElementsRequest.WaitStrategy
+    ) -> [XCUIElement] {
+        if waitStrategy == .immediate {
+            let elements = query.safeAllElementsBoundByIndex()
+            DriverLog.log("resolveElements: immediate, found \(elements.count)")
+            return elements
+        }
+        
+        DriverLog.log("resolveElements: polling with timeout=\(timeout)s")
+        let deadline = Date().addingTimeInterval(max(timeout, 0))
+        while true {
+            let elements = query.safeAllElementsBoundByIndex()
+            if !elements.isEmpty {
+                DriverLog.log("resolveElements: found \(elements.count) elements")
+                return elements
+            }
+            
+            if Date() >= deadline {
+                DriverLog.log("resolveElements: timeout expired, no elements found")
+                return []
+            }
+            
+            let sleepTime = min(Self.pollingInterval, deadline.timeIntervalSinceNow)
+            if sleepTime > 0 {
+                sleepForPolling(sleepTime)
+            }
+        }
+    }
+    
+
+    private static func resolveElement(
+        from query: XCUIElementQuery,
+        timeout: TimeInterval,
+        waitStrategy: FindElementsRequest.WaitStrategy
+    ) -> XCUIElement? {
+        resolveElements(from: query, timeout: timeout, waitStrategy: waitStrategy).first
+    }
+    
+    private static func sleepForPolling(_ seconds: TimeInterval) {
+        let clampedSeconds = max(0, seconds)
+        guard clampedSeconds > 0 else { return }
+        RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: clampedSeconds))
+    }
     
     /// Finds elements matching the given criteria
     /// - Parameters:
@@ -14,7 +100,7 @@ final class ElementQuery: Sendable {
     ///   - waitStrategy: Whether to wait for elements or return immediately
     /// - Returns: Array of matching elements serialized as UINodes
     /// - Throws: If query is invalid or timeout occurs
-    @MainActor static func findElements(
+    static func findElements(
         in app: XCUIApplication,
         identifier: String? = nil,
         label: String? = nil,
@@ -22,51 +108,25 @@ final class ElementQuery: Sendable {
         timeout: TimeInterval,
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws -> [UINode] {
+        DriverLog.log("findElements: identifier=\(identifier ?? "-") label=\(label ?? "-") predicate=\(predicate ?? "-") timeout=\(timeout)s")
         
         // Validate that at least one search criterion is provided
         guard identifier != nil || label != nil || predicate != nil else {
             throw QueryError.missingCriteria
         }
         
-        // Build query
-        let query: XCUIElementQuery
+        let query = try buildQuery(
+            in: app,
+            identifier: identifier,
+            label: label,
+            predicate: predicate
+        )
         
-        if let identifier = identifier {
-            // Search by accessibility identifier
-            query = app.descendants(matching: .any).safeMatching(identifier: identifier)
-        } else if let labelText = label {
-            // Search by label (exact match)
-            let labelPredicate = NSPredicate(format: "label == %@", labelText)
-            query = app.descendants(matching: .any).matching(labelPredicate)
-        } else if let predicateString = predicate {
-            // Search by NSPredicate
-            let nsPredicate = NSPredicate(format: predicateString)
-            var caughtException: NSException?
-            guard let safeQuery = app.descendants(matching: .any)
-                .safeMatching(nsPredicate, exception: &caughtException) else {
-                let reason = caughtException?.reason ?? predicateString
-                throw QueryError.invalidPredicate(reason)
-            }
-            query = safeQuery
-        } else {
-            throw QueryError.missingCriteria
-        }
-        
-        // Handle wait strategy
-        if waitStrategy == .wait {
-            // Wait for at least one element to exist
-            let firstElement = query.firstMatch
-            guard firstElement.waitForExistence(timeout: timeout) else {
-                throw QueryError.elementNotFound(
-                    identifier: identifier,
-                    predicate: predicate,
-                    timeout: timeout
-                )
-            }
-        }
-        
-        // Get all matching elements
-        let elements = query.safeAllElementsBoundByIndex()
+        let elements = resolveElements(
+            from: query,
+            timeout: timeout,
+            waitStrategy: waitStrategy
+        )
         
         // Check if we found anything
         guard !elements.isEmpty else {
@@ -78,7 +138,8 @@ final class ElementQuery: Sendable {
         }
         
         // Serialize to UINodes
-        return elements.map { UINode.fromShallow($0) }
+        DriverLog.log("findElements: found \(elements.count) elements")
+        return try elements.map { try UINode.fromShallow($0) }
     }
     
     /// Finds a single element by identifier
@@ -89,34 +150,19 @@ final class ElementQuery: Sendable {
     ///   - waitStrategy: Whether to wait or return immediately
     /// - Returns: The matching element as UINode
     /// - Throws: If element not found or timeout
-    @MainActor static func findElement(
+    static func findElement(
         in app: XCUIApplication,
         identifier: String,
         timeout: TimeInterval,
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws -> UINode {
-        
-        let element = app.descendants(matching: .any).safeMatching(identifier: identifier).firstMatch
-        
-        if waitStrategy == .wait {
-            guard element.waitForExistence(timeout: timeout) else {
-                throw QueryError.elementNotFound(
-                    identifier: identifier,
-                    predicate: nil,
-                    timeout: timeout
-                )
-            }
-        } else {
-            guard element.exists else {
-                throw QueryError.elementNotFound(
-                    identifier: identifier,
-                    predicate: nil,
-                    timeout: 0
-                )
-            }
-        }
-        
-        return UINode.fromShallow(element)
+        let element = try getElement(
+            in: app,
+            identifier: identifier,
+            timeout: timeout,
+            waitStrategy: waitStrategy
+        )
+        return try UINode.fromShallow(element)
     }
     
     /// Gets the complete UI tree starting from app root
@@ -124,11 +170,12 @@ final class ElementQuery: Sendable {
     ///   - app: The XCUIApplication to traverse
     ///   - maxDepth: Maximum depth to traverse (nil = unlimited)
     /// - Returns: Root UINode with complete hierarchy
-    @MainActor static func getUITree(
+    static func getUITree(
         from app: XCUIApplication,
         maxDepth: Int
-    ) -> UINode {
-        return UINode.from(app, maxDepth: maxDepth)
+    ) throws -> UINode {
+        DriverLog.log("getUITree: maxDepth=\(maxDepth)")
+        return try UINode.from(app, maxDepth: maxDepth)
     }
     
     /// Gets a specific XCUIElement by identifier
@@ -139,33 +186,25 @@ final class ElementQuery: Sendable {
     ///   - waitStrategy: Whether to wait or return immediately
     /// - Returns: The XCUIElement
     /// - Throws: If element not found
-    @MainActor static func getElement(
+    static func getElement(
         in app: XCUIApplication,
         identifier: String,
         timeout: TimeInterval,
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws -> XCUIElement {
-        
-        let element = app.descendants(matching: .any).safeMatching(identifier: identifier).firstMatch
-        
-        if waitStrategy == .wait {
-            guard element.waitForExistence(timeout: timeout) else {
-                throw QueryError.elementNotFound(
-                    identifier: identifier,
-                    predicate: nil,
-                    timeout: timeout
-                )
-            }
-        } else {
-            guard element.exists else {
-                throw QueryError.elementNotFound(
-                    identifier: identifier,
-                    predicate: nil,
-                    timeout: 0
-                )
-            }
+        DriverLog.log("getElement: identifier=\(identifier) timeout=\(timeout)s")
+        let query = app.descendants(matching: .any).safeMatching(identifier: identifier)
+        guard let element = resolveElement(
+            from: query,
+            timeout: timeout,
+            waitStrategy: waitStrategy
+        ) else {
+            throw QueryError.elementNotFound(
+                identifier: identifier,
+                predicate: nil,
+                timeout: waitStrategy == .wait ? timeout : 0
+            )
         }
-        
         return element
     }
     
@@ -177,40 +216,28 @@ final class ElementQuery: Sendable {
     ///   - waitStrategy: Whether to wait or return immediately
     /// - Returns: The first matching XCUIElement
     /// - Throws: If element not found or predicate invalid
-    @MainActor static func getElement(
+    static func getElement(
         in app: XCUIApplication,
         predicate predicateString: String,
         timeout: TimeInterval,
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws -> XCUIElement {
-        
-        let nsPredicate = NSPredicate(format: predicateString)
-        var caughtException: NSException?
-        guard let query = app.descendants(matching: .any)
-            .safeMatching(nsPredicate, exception: &caughtException) else {
-            let reason = caughtException?.reason ?? predicateString
-            throw QueryError.invalidPredicate(reason)
+        DriverLog.log("getElement: predicate=\(predicateString) timeout=\(timeout)s")
+        let query = try buildQuery(
+            in: app,
+            predicate: predicateString
+        )
+        guard let element = resolveElement(
+            from: query,
+            timeout: timeout,
+            waitStrategy: waitStrategy
+        ) else {
+            throw QueryError.elementNotFound(
+                identifier: nil,
+                predicate: predicateString,
+                timeout: waitStrategy == .wait ? timeout : 0
+            )
         }
-        let element = query.firstMatch
-        
-        if waitStrategy == .wait {
-            guard element.waitForExistence(timeout: timeout) else {
-                throw QueryError.elementNotFound(
-                    identifier: nil,
-                    predicate: predicateString,
-                    timeout: timeout
-                )
-            }
-        } else {
-            guard element.exists else {
-                throw QueryError.elementNotFound(
-                    identifier: nil,
-                    predicate: predicateString,
-                    timeout: 0
-                )
-            }
-        }
-        
         return element
     }
     
@@ -225,7 +252,7 @@ final class ElementQuery: Sendable {
     ///   - timeout: Maximum time to wait for element
     ///   - waitStrategy: Whether to wait for element or tap immediately
     /// - Throws: If element not found or tap fails
-    @MainActor static func tap(
+    static func tap(
         in app: XCUIApplication,
         identifier: String? = nil,
         label: String? = nil,
@@ -233,6 +260,7 @@ final class ElementQuery: Sendable {
         timeout: TimeInterval,
         waitStrategy: FindElementsRequest.WaitStrategy = .wait
     ) throws {
+        DriverLog.log("tap: identifier=\(identifier ?? "-") label=\(label ?? "-") predicate=\(predicate ?? "-")")
         
         let element: XCUIElement
         
@@ -244,7 +272,6 @@ final class ElementQuery: Sendable {
                 waitStrategy: waitStrategy
             )
         } else if let labelText = label {
-            // Search by label (exact match)
             let labelPredicate = NSPredicate(format: "label == %@", labelText)
             element = try getElement(
                 in: app,
@@ -264,6 +291,7 @@ final class ElementQuery: Sendable {
         }
         
         guard element.safeIsHittable() else {
+            DriverLog.log("tap: element not hittable")
             throw InteractionError.elementNotHittable
         }
         
@@ -275,7 +303,7 @@ final class ElementQuery: Sendable {
     ///   - app: The XCUIApplication providing the coordinate space
     ///   - x: Absolute screen X coordinate in points
     ///   - y: Absolute screen Y coordinate in points
-    @MainActor static func tapAtCoordinate(in app: XCUIApplication, x: CGFloat, y: CGFloat) {
+    static func tapAtCoordinate(in app: XCUIApplication, x: CGFloat, y: CGFloat) {
         let origin = app.coordinate(withNormalizedOffset: .zero)
         let target = origin.withOffset(CGVector(dx: x, dy: y))
         target.tap()
@@ -292,7 +320,7 @@ final class ElementQuery: Sendable {
     ///   - waitStrategy: Whether to wait for element or type immediately
     ///   - clearFirst: Whether to clear existing text before typing (default: false)
     /// - Throws: If element not found or typing fails
-    @MainActor static func typeText(
+    static func typeText(
         _ text: String,
         in app: XCUIApplication,
         identifier: String? = nil,
@@ -302,6 +330,7 @@ final class ElementQuery: Sendable {
         waitStrategy: FindElementsRequest.WaitStrategy = .wait,
         clearFirst: Bool = false
     ) throws {
+        DriverLog.log("typeText: identifier=\(identifier ?? "-") label=\(label ?? "-") predicate=\(predicate ?? "-") textLength=\(text.count) clearFirst=\(clearFirst ? 1 : 0)")
         
         let element: XCUIElement
         
@@ -333,28 +362,32 @@ final class ElementQuery: Sendable {
         }
         
         // Verify element can receive keyboard input
+        DriverLog.log("typeText: found element of type=\(element.elementType.rawValue)")
         guard element.elementType == .textField || 
               element.elementType == .textView ||
               element.elementType == .searchField ||
               element.elementType == .secureTextField else {
+            DriverLog.log("typeText: element type \(element.elementType.rawValue) is not typeable")
             throw InteractionError.elementNotTypeable(type: "\(element.elementType)")
         }
         
         // Tap to focus
+        DriverLog.log("typeText: tapping to focus")
         element.tap()
         
         // Clear existing text if requested
         if clearFirst, let currentValue = element.value as? String, !currentValue.isEmpty {
+            DriverLog.log("typeText: clearing \(currentValue.count) existing chars")
             // Select all and delete
             let deleteString = String(repeating: XCUIKeyboardKey.delete.rawValue, count: currentValue.count)
             element.typeText(deleteString)
         }
         
+        DriverLog.log("typeText: typing \(text.count) chars")
         element.typeText(text)
     }
     
     /// Performs a swipe gesture on the specified element or screen
-    /// - Parameters:
     ///   - app: The application instance
     ///   - direction: Swipe direction ("up", "down", "left", "right")
     ///   - identifier: Accessibility identifier (optional)
@@ -364,7 +397,7 @@ final class ElementQuery: Sendable {
     ///   - waitStrategy: Element wait strategy
     /// - Throws: QueryError if element not found, InteractionError if invalid direction
 
-    @MainActor static func swipe(
+    static func swipe(
         in app: XCUIApplication,
         direction: String,
         identifier: String? = nil,
@@ -376,55 +409,62 @@ final class ElementQuery: Sendable {
     ) throws {
         // If no element specified, swipe on the app itself
         let element: XCUIElement
-        if identifier != nil || label != nil || predicate != nil {
-            if let identifier = identifier {
-                element = app.descendants(matching: .any).safeMatching(identifier: identifier).firstMatch
-                if waitStrategy == .wait {
-                    guard element.waitForExistence(timeout: timeout) else {
-                        throw QueryError.elementNotFound(identifier: identifier, predicate: nil, timeout: timeout)
-                    }
-                }
-            } else if let label = label {
-                let nsPredicate = NSPredicate(format: "label == %@", label)
-                element = app.descendants(matching: .any).matching(nsPredicate).firstMatch
-                if waitStrategy == .wait {
-                    guard element.waitForExistence(timeout: timeout) else {
-                        throw QueryError.elementNotFound(identifier: nil, predicate: "label == '\(label)'", timeout: timeout)
-                    }
-                }
-            } else if let predicate = predicate {
-                let nsPredicate = NSPredicate(format: predicate)
-                var caughtException: NSException?
-                guard let safeQuery = app.descendants(matching: .any)
-                    .safeMatching(nsPredicate, exception: &caughtException) else {
-                    let reason = caughtException?.reason ?? predicate
-                    throw QueryError.invalidPredicate(reason)
-                }
-                element = safeQuery.firstMatch
-                if waitStrategy == .wait {
-                    guard element.waitForExistence(timeout: timeout) else {
-                        throw QueryError.elementNotFound(identifier: nil, predicate: predicate, timeout: timeout)
-                    }
-                }
-            } else {
-                element = app
-            }
+        if let identifier = identifier {
+            element = try getElement(
+                in: app,
+                identifier: identifier,
+                timeout: timeout,
+                waitStrategy: waitStrategy
+            )
+        } else if let labelText = label {
+            let labelPredicate = NSPredicate(format: "label == %@", labelText)
+            element = try getElement(
+                in: app,
+                predicate: labelPredicate.predicateFormat,
+                timeout: timeout,
+                waitStrategy: waitStrategy
+            )
+        } else if let predicate = predicate {
+            element = try getElement(
+                in: app,
+                predicate: predicate,
+                timeout: timeout,
+                waitStrategy: waitStrategy
+            )
         } else {
             element = app
         }
         
-        // Perform swipe based on direction and velocity
-        // Note: XCUIElement swipe methods don't support velocity parameter in all iOS versions
-        // Using default swipe methods which are fast by nature
+        // Validate element is visible and hittable before attempting the swipe
+        // to avoid XCTest recording an internal failure that could crash the server
+        if element !== app {
+            guard !element.frame.isEmpty else {
+                DriverLog.log("swipe: element has empty frame (offscreen)")
+                throw InteractionError.elementNotSwipeable(
+                    reason: "Element has an empty visible frame (likely offscreen). "
+                        + "Try scrolling the element into view first or swipe on the app itself."
+                )
+            }
+            guard element.safeIsHittable() else {
+                DriverLog.log("swipe: element not hittable")
+                throw InteractionError.elementNotSwipeable(
+                    reason: "Element is not hittable (not visible or obscured by another element). "
+                        + "Try scrolling the element into view first."
+                )
+            }
+        }
+        
+        let gestureVelocity = XCUIGestureVelocity.from(velocity)
+        
         switch direction.lowercased() {
         case "up":
-            element.swipeUp()
+            element.swipeUp(velocity: gestureVelocity)
         case "down":
-            element.swipeDown()
+            element.swipeDown(velocity: gestureVelocity)
         case "left":
-            element.swipeLeft()
+            element.swipeLeft(velocity: gestureVelocity)
         case "right":
-            element.swipeRight()
+            element.swipeRight(velocity: gestureVelocity)
         default:
             throw InteractionError.invalidSwipeDirection(direction)
         }
@@ -441,7 +481,7 @@ final class ElementQuery: Sendable {
     ///   - waitStrategy: Element wait strategy
     /// - Throws: QueryError if element not found
 
-    @MainActor static func scrollToElement(
+    static func scrollToElement(
         in app: XCUIApplication,
         toElementIdentifier: String? = nil,
         toElementPredicate: String? = nil,
@@ -453,59 +493,73 @@ final class ElementQuery: Sendable {
         // Find the scroll container
         let scrollContainer: XCUIElement
         if let containerId = scrollContainerIdentifier {
-            scrollContainer = app.descendants(matching: .any).safeMatching(identifier: containerId).firstMatch
-            if waitStrategy == .wait {
-                guard scrollContainer.waitForExistence(timeout: timeout) else {
-                    throw QueryError.elementNotFound(identifier: containerId, predicate: nil, timeout: timeout)
-                }
-            }
+            scrollContainer = try getElement(
+                in: app,
+                identifier: containerId,
+                timeout: timeout,
+                waitStrategy: waitStrategy
+            )
         } else if let containerPred = scrollContainerPredicate {
-            let nsPredicate = NSPredicate(format: containerPred)
-            var caughtException: NSException?
-            guard let safeQuery = app.descendants(matching: .any)
-                .safeMatching(nsPredicate, exception: &caughtException) else {
-                let reason = caughtException?.reason ?? containerPred
-                throw QueryError.invalidPredicate(reason)
-            }
-            scrollContainer = safeQuery.firstMatch
-            if waitStrategy == .wait {
-                guard scrollContainer.waitForExistence(timeout: timeout) else {
-                    throw QueryError.elementNotFound(identifier: nil, predicate: containerPred, timeout: timeout)
-                }
-            }
+            scrollContainer = try getElement(
+                in: app,
+                predicate: containerPred,
+                timeout: timeout,
+                waitStrategy: waitStrategy
+            )
         } else {
             // Default to first scroll view
-            scrollContainer = app.descendants(matching: .any).matching(NSPredicate(format: "elementType == %d OR elementType == %d", 
-                                                                                    XCUIElement.ElementType.scrollView.rawValue,
-                                                                                    XCUIElement.ElementType.table.rawValue)).firstMatch
-            if !scrollContainer.exists {
+            let scrollContainerQuery = app.descendants(matching: .any).safeMatching(
+                predicate: NSPredicate(
+                    format: "elementType == %d OR elementType == %d",
+                    XCUIElement.ElementType.scrollView.rawValue,
+                    XCUIElement.ElementType.table.rawValue
+                )
+            )
+            guard let firstContainer = resolveElement(
+                from: scrollContainerQuery,
+                timeout: timeout,
+                waitStrategy: waitStrategy
+            ) else {
                 throw QueryError.elementNotFound(identifier: nil, predicate: "scrollView or table", timeout: timeout)
             }
+            scrollContainer = firstContainer
         }
         
         // Find the target element
         let targetElement: XCUIElement
         if let targetId = toElementIdentifier {
-            targetElement = scrollContainer.descendants(matching: .any).safeMatching(identifier: targetId).firstMatch
-        } else if let targetPred = toElementPredicate {
-            let nsPredicate = NSPredicate(format: targetPred)
-            var caughtException: NSException?
-            guard let safeQuery = scrollContainer.descendants(matching: .any)
-                .safeMatching(nsPredicate, exception: &caughtException) else {
-                let reason = caughtException?.reason ?? targetPred
-                throw QueryError.invalidPredicate(reason)
+            let targetQuery = scrollContainer.descendants(matching: .any).safeMatching(identifier: targetId)
+            guard let found = resolveElement(
+                from: targetQuery,
+                timeout: timeout,
+                waitStrategy: waitStrategy
+            ) else {
+                throw QueryError.elementNotFound(
+                    identifier: toElementIdentifier,
+                    predicate: toElementPredicate,
+                    timeout: waitStrategy == .wait ? timeout : 0
+                )
             }
-            targetElement = safeQuery.firstMatch
+            targetElement = found
+        } else if let targetPred = toElementPredicate {
+            let targetQuery = try buildQuery(
+                in: scrollContainer,
+                predicate: targetPred
+            )
+            guard let found = resolveElement(
+                from: targetQuery,
+                timeout: timeout,
+                waitStrategy: waitStrategy
+            ) else {
+                throw QueryError.elementNotFound(
+                    identifier: toElementIdentifier,
+                    predicate: toElementPredicate,
+                    timeout: waitStrategy == .wait ? timeout : 0
+                )
+            }
+            targetElement = found
         } else {
             throw QueryError.missingCriteria
-        }
-        
-        // Scroll to make element visible - XCTest automatically scrolls when accessing element
-        // We just need to ensure it exists
-        if waitStrategy == .wait {
-            guard targetElement.waitForExistence(timeout: timeout) else {
-                throw QueryError.elementNotFound(identifier: toElementIdentifier, predicate: toElementPredicate, timeout: timeout)
-            }
         }
         
         // Ensure element is visible by trying to scroll to it
@@ -532,7 +586,7 @@ final class ElementQuery: Sendable {
     /// - Throws: InteractionError if keyboard not available
     /// - Note: Requires an element to have keyboard focus. Use /ui/tap first to focus an element.
 
-    @MainActor static func keyboardType(
+    static func keyboardType(
         in app: XCUIApplication,
         text: String? = nil,
         keys: [String]? = nil
@@ -574,6 +628,7 @@ final class ElementQuery: Sendable {
 enum InteractionError: LocalizedError, Sendable {
     case elementNotHittable
     case elementNotTypeable(type: String)
+    case elementNotSwipeable(reason: String)
     case invalidSwipeDirection(String)
     case invalidKey(String)
     
@@ -583,6 +638,8 @@ enum InteractionError: LocalizedError, Sendable {
             return "Element is not hittable (not visible or not enabled)"
         case .elementNotTypeable(let type):
             return "Element of type '\(type)' cannot receive text input. Only textField, textView, searchField, and secureTextField elements support typing."
+        case .elementNotSwipeable(let reason):
+            return "Cannot swipe on element: \(reason)"
         case .invalidSwipeDirection(let direction):
             return "Invalid swipe direction '\(direction)'. Must be 'up', 'down', 'left', or 'right'"
         case .invalidKey(let key):
@@ -615,6 +672,26 @@ enum QueryError: LocalizedError, Sendable {
             }
         case .multipleElementsFound(let count):
             return "Expected single element but found \(count) matching elements"
+        }
+    }
+}
+
+// MARK: - Gesture Velocity Mapping
+
+extension XCUIGestureVelocity {
+    /// Creates a gesture velocity from a string value.
+    /// - Parameter string: One of "slow", "default", or "fast" (default)
+    /// - Returns: The corresponding `XCUIGestureVelocity`
+    static func from(_ string: String) -> XCUIGestureVelocity {
+        switch string.lowercased() {
+        case "slow":
+            return .slow
+        case "default":
+            return .default
+        case "fast":
+            return .fast
+        default:
+            return .fast
         }
     }
 }

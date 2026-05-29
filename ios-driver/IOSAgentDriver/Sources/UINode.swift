@@ -1,6 +1,18 @@
 import Foundation
 import XCTest
 
+/// Error thrown when element snapshotting fails (element disappeared from the UI tree)
+enum UINodeError: Error, LocalizedError {
+    case snapshotFailed(description: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .snapshotFailed(let description):
+            return "Element snapshot failed: \(description)"
+        }
+    }
+}
+
 /// Represents a node in the UI accessibility tree
 /// Note: All methods are synchronous (XCTest APIs are synchronous)
 struct UINode: Codable, Sendable {
@@ -16,75 +28,110 @@ struct UINode: Codable, Sendable {
     let isSelected: Bool          // Whether element is selected
     let hasFocus: Bool            // Whether element has keyboard focus
     let children: [UINode]        // Child elements in accessibility hierarchy
-    
-    /// Creates a UINode from an XCUIElement
-    /// - Parameter element: The XCUIElement to serialize
-    /// - Returns: A UINode representing the element
-    @MainActor static func from(_ element: XCUIElement) -> UINode {
+
+    // MARK: - Snapshot-based factory methods (single IPC round-trip)
+
+    /// Creates a UINode from an XCUIElementSnapshot (no IPC — already fetched)
+    private static func fromSnapshot(_ snap: XCUIElementSnapshot) -> UINode {
         UINode(
-            type: "\(element.elementType.rawValue)",
-            identifier: element.identifier,
-            label: element.label,
-            value: element.value as? String,
-            placeholderValue: element.placeholderValue,
-            title: element.title,
-            frame: FrameWrapper(from: element.frame),
-            isEnabled: element.isEnabled,
-            isVisible: element.exists && !element.frame.isEmpty,
-            isSelected: element.isSelected,
-            hasFocus: element.hasFocus,
-            children: element.children(matching: .any)
-                .safeAllElementsBoundByIndex()
-                .map { Self.from($0) }
+            type: "\(snap.elementType.rawValue)",
+            identifier: snap.identifier,
+            label: snap.label,
+            value: snap.value as? String,
+            placeholderValue: snap.placeholderValue,
+            title: snap.title,
+            frame: FrameWrapper(from: snap.frame),
+            isEnabled: snap.isEnabled,
+            isVisible: !snap.frame.isEmpty,
+            isSelected: snap.isSelected,
+            hasFocus: snap.hasFocus,
+            children: snap.children.map { fromSnapshot($0) }
         )
     }
-    
-    /// Creates a UINode with minimal depth (no children traversal)
-    /// - Parameter element: The XCUIElement to serialize
-    /// - Returns: A UINode without children
-    @MainActor static func fromShallow(_ element: XCUIElement) -> UINode {
+
+    /// Creates a UINode from an XCUIElementSnapshot without children
+    private static func shallowFromSnapshot(_ snap: XCUIElementSnapshot) -> UINode {
         UINode(
-            type: "\(element.elementType.rawValue)",
-            identifier: element.identifier,
-            label: element.label,
-            value: element.value as? String,
-            placeholderValue: element.placeholderValue,
-            title: element.title,
-            frame: FrameWrapper(from: element.frame),
-            isEnabled: element.isEnabled,
-            isVisible: element.exists && !element.frame.isEmpty,
-            isSelected: element.isSelected,
-            hasFocus: element.hasFocus,
+            type: "\(snap.elementType.rawValue)",
+            identifier: snap.identifier,
+            label: snap.label,
+            value: snap.value as? String,
+            placeholderValue: snap.placeholderValue,
+            title: snap.title,
+            frame: FrameWrapper(from: snap.frame),
+            isEnabled: snap.isEnabled,
+            isVisible: !snap.frame.isEmpty,
+            isSelected: snap.isSelected,
+            hasFocus: snap.hasFocus,
             children: []
         )
     }
-    
-    /// Creates a UINode with limited depth
+
+    /// Creates a UINode from an XCUIElementSnapshot with limited depth
+    private static func fromSnapshot(_ snap: XCUIElementSnapshot, maxDepth: Int) -> UINode {
+        guard maxDepth > 0 else {
+            return shallowFromSnapshot(snap)
+        }
+        return UINode(
+            type: "\(snap.elementType.rawValue)",
+            identifier: snap.identifier,
+            label: snap.label,
+            value: snap.value as? String,
+            placeholderValue: snap.placeholderValue,
+            title: snap.title,
+            frame: FrameWrapper(from: snap.frame),
+            isEnabled: snap.isEnabled,
+            isVisible: !snap.frame.isEmpty,
+            isSelected: snap.isSelected,
+            hasFocus: snap.hasFocus,
+            children: snap.children.map { fromSnapshot($0, maxDepth: maxDepth - 1) }
+        )
+    }
+
+    // MARK: - Public factory methods
+
+    /// Creates a UINode with full depth using a single accessibility snapshot.
+    /// - Parameter element: The XCUIElement to serialize
+    /// - Throws: `UINodeError.snapshotFailed` if the element disappeared from the UI tree
+    static func from(_ element: XCUIElement) throws -> UINode {
+        do {
+            let snap = try element.snapshot()
+            return fromSnapshot(snap)
+        } catch {
+            throw UINodeError.snapshotFailed(description: error.localizedDescription)
+        }
+    }
+
+    /// Creates a UINode without children using a single accessibility snapshot.
+    /// - Parameter element: The XCUIElement to serialize
+    /// - Throws: `UINodeError.snapshotFailed` if the element disappeared from the UI tree
+    static func fromShallow(_ element: XCUIElement) throws -> UINode {
+        let start = CFAbsoluteTimeGetCurrent()
+        do {
+            let snap = try element.snapshot()
+            let node = shallowFromSnapshot(snap)
+            let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
+            if elapsed > 100 {
+                DriverLog.log("⏱ fromShallow(snapshot): \(String(format: "%.0f", elapsed))ms")
+            }
+            return node
+        } catch {
+            throw UINodeError.snapshotFailed(description: error.localizedDescription)
+        }
+    }
+
+    /// Creates a UINode with limited depth using a single accessibility snapshot.
     /// - Parameters:
     ///   - element: The XCUIElement to serialize
     ///   - maxDepth: Maximum depth to traverse (0 = no children)
-    /// - Returns: A UINode with limited children depth
-    @MainActor static func from(_ element: XCUIElement, maxDepth: Int) -> UINode {
-        guard maxDepth > 0 else {
-            return fromShallow(element)
+    /// - Throws: `UINodeError.snapshotFailed` if the element disappeared from the UI tree
+    static func from(_ element: XCUIElement, maxDepth: Int) throws -> UINode {
+        do {
+            let snap = try element.snapshot()
+            return fromSnapshot(snap, maxDepth: maxDepth)
+        } catch {
+            throw UINodeError.snapshotFailed(description: error.localizedDescription)
         }
-        
-        return UINode(
-            type: "\(element.elementType.rawValue)",
-            identifier: element.identifier,
-            label: element.label,
-            value: element.value as? String,
-            placeholderValue: element.placeholderValue,
-            title: element.title,
-            frame: FrameWrapper(from: element.frame),
-            isEnabled: element.isEnabled,
-            isVisible: element.exists && !element.frame.isEmpty,
-            isSelected: element.isSelected,
-            hasFocus: element.hasFocus,
-            children: element.children(matching: .any)
-                .safeAllElementsBoundByIndex()
-                .map { Self.from($0, maxDepth: maxDepth - 1) }
-        )
     }
 }
 
